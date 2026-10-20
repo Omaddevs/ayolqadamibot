@@ -1,0 +1,12 @@
+services:
+  bot:
+    build: .
+    container_name: ayolqadam-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_HOST: 0.0.0.0        # konteyner ichida tashqi ulanish uchun
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "127.0.0.1:8080:8080"  # faqat serverning o'zidan (nginx orqali) ochiq

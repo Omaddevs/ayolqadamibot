@@ -1,0 +1,21 @@
+# /etc/systemd/system/ayolqadam-bot.service
+# O'rnatish:
+#   sudo cp deploy/ayolqadam-bot.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ayolqadam-bot
+#   journalctl -u ayolqadam-bot -f        # loglar
+[Unit]
+Description=AyolQadam Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/ayolqadam-bot
+ExecStart=/opt/ayolqadam-bot/.venv/bin/python run.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
