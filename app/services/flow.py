@@ -99,6 +99,11 @@ def load_channel_buttons(db: Database) -> list[dict]:
     return out[:8]
 
 
+# «📂 Ish kanallari» — Telegram chat papkasi (bosilsa barcha kanallarga bir bosishda qo'shiladi). FOLDER_LINK muhit o'zgaruvchisi bilan almashtiriladi
+FOLDER_LINK = os.getenv("FOLDER_LINK", "").strip() or "https://t.me/addlist/URvgf3qbEus5ZDcy"
+FOLDER_ROW_RE = re.compile(r"📂|🗂|kanallar|каналы", re.I)
+
+
 def custom_buttons(items: list[dict], me: str) -> list[InlineKeyboardButton]:
     """{post}/{site}/{bot} o'rniga havola qo'yiladi; havolasi bo'sh yoki noto'g'ri tugma tashlab ketiladi."""
     site = os.getenv("WEB_URL", "").strip().rstrip("/")
@@ -106,6 +111,8 @@ def custom_buttons(items: list[dict], me: str) -> list[InlineKeyboardButton]:
     out = []
     for b in items:
         url = re.sub(r"\{(\w+)\}", lambda m: links.get(m.group(1), m.group(0)), b["url"])
+        if not url and FOLDER_ROW_RE.search(b["text"]):
+            url = FOLDER_LINK  # «📂 Ish kanallari» havolasiz saqlangan bo'lsa — standart papka
         if not _URL_RE.match(url) or "{" in url:
             continue
         out.append(InlineKeyboardButton(text=b["text"], url=url, style=b["style"] or None))
