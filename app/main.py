@@ -12,6 +12,7 @@ from aiogram.fsm.storage.base import BaseStorage
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault
 
+from .button_colors import ColorButtons
 from .config import BASE_DIR, Config, get_config
 from .db import Database
 from .handlers import admin, ads, browse, cabinet, fallback, menu, resume, start, vacancy
@@ -72,6 +73,7 @@ async def main() -> None:
         log.info("Bosh admin: %s", admin_id)
 
     bot = Bot(cfg.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot.session.middleware(ColorButtons())  # barcha inline tugmalar rangli
     dp = build_dispatcher(cfg, db)
     me = await bot.me()
     log.info("Bot: @%s", me.username)

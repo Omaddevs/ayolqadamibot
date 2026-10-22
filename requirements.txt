@@ -1,4 +1,4 @@
-aiogram>=3.17,<4
+aiogram>=3.31,<4  # tugma ranglari (style) — 3.31 dan
 aiosqlite>=0.20
 aiohttp>=3.10
 python-dotenv>=1.0
