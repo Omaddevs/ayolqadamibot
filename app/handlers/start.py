@@ -19,7 +19,6 @@ from ..utils import classify_target, normalize_phone
 from .base import send_menu
 from .browse import show_resume, show_vacancy
 from .resume import start_resume
-from .ads import start_ad
 
 router = Router(name="start")
 log = logging.getLogger(__name__)
@@ -55,11 +54,8 @@ async def handle_payload(message: Message, payload: str, state: FSMContext, db: 
         await send_menu(message, user, lang, is_admin, "👇")
         await show_resume(message, int(raw_id), db=db, bot=bot, user=user, lang=lang, is_admin=is_admin)
         return True
-    if kind == "post":
-        # kanal postidagi «E'lon joylash» — shablon bo'yicha e'lon (web admin moderatsiyasi)
-        from ..config import get_config
-        await start_ad(message, state, get_config(), user, lang)
-        return True
+    # kind == "post" (kanal postidagi «E'lon joylash») — alohida ishlanmaydi: oddiy /start kabi salomlashuv va
+    # bosh menyu chiqadi, e'lon menyudagi «📢 E'lon berish» orqali beriladi
     return False
 
 

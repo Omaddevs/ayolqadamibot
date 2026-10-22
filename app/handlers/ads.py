@@ -79,6 +79,13 @@ async def start_ad(message: Message, state: FSMContext, cfg: Config, user: dict,
     role = user.get("role") or "seeker"
     tpls = sorted(data.get("templates", []), key=lambda x: 0 if role in x.get("roles", []) else 1)
     await state.update_data(ad_data=data)
+    # rolga mos kartochka shabloni bo'lsa (ish beruvchi — «ISHCHI KERAK!», ish izlovchi — «ISH IZLAYMAN!») — darhol boshlanadi
+    card = next((x for x in tpls if x.get("layout") == "card" and role in x.get("roles", [])), None)
+    if card:
+        await state.update_data(ad={"tpl": card["id"], "i": 0, "f": {}})
+        await state.set_state(AdForm.fill)
+        await message.answer(_card_text(card, {}, data, blank=True) + "\n\n" + t("ad_card_intro", lang))
+        return await _ask(message, state, user, lang)
     lines = [t("ad_choose", lang), ""]
     rows = []
     for x in tpls:
@@ -151,7 +158,9 @@ async def _ask(message: Message, state: FSMContext, user: dict, lang: str, note:
     if f["type"] == "tg" and user.get("username"):
         rows.append([_b(t("ad_my_tg", lang, u="@" + user["username"]), "me")])
     nav = []
-    if ad["i"] > 0:
+    if ad.get("edit"):
+        nav.append(_b(t("ad_back", lang), "prev"))  # tahrirlashda — ko'rib chiqishga qaytish
+    elif ad["i"] > 0:
         nav.append(_b(t("ad_back", lang), "back"))
     if not f.get("required"):
         nav.append(_b(t("ad_skip", lang), "skip"))
@@ -167,7 +176,10 @@ async def _set(message: Message, state: FSMContext, user: dict, lang: str, value
         ad["f"][f["key"]] = value
     else:
         ad["f"].pop(f["key"], None)
-    ad["i"] += 1
+    if ad.pop("edit", False):
+        ad["i"] = len(tpl["fields"])  # bitta band tahrirlandi — darhol ko'rib chiqishga
+    else:
+        ad["i"] += 1
     await state.update_data(ad=ad)
     await _ask(message, state, user, lang)
 
@@ -253,7 +265,25 @@ async def on_button(cb: CallbackQuery, callback_data: AdCb, state: FSMContext, u
 
 
 # ---------- ko'rib chiqish va yuborish ----------
+def _card_text(tpl: dict, values: dict, data: dict, blank: bool = False) -> str:
+    """Kartochka (kanal postidagi bilan bir xil): "📢 ISHCHI KERAK!", har qatorda "emoji <b>Nom:</b> qiymat", oxirida murojaat.
+    blank — bo'sh shablon (qiymatlar o'rnida "(...)") — boshida nima so'ralishini ko'rsatish uchun."""
+    def line(f: dict) -> str | None:
+        v = values.get(f["key"])
+        if not v and not blank:
+            return None
+        shown = html.escape(_display(f, v, data, "uz")) if v else "(...)"
+        return f"{f['emoji']} <b>{html.escape(f['label'])}:</b>{chr(10) if chr(10) in shown else ' '}{shown}"
+
+    contact = ("phone", "tg")
+    body = [x for x in (line(f) for f in tpl["fields"] if f["key"] not in contact) if x]
+    tail = [x for x in (line(f) for f in tpl["fields"] if f["key"] in contact) if x]
+    return "\n\n".join(p for p in (f"{tpl['emoji']} <b>{html.escape(tpl['headline'])}</b>", "\n".join(body), "\n".join(tail)) if p)
+
+
 def _preview_text(tpl: dict, ad: dict, data: dict, lang: str) -> str:
+    if tpl.get("layout") == "card":
+        return _card_text(tpl, ad["f"], data)
     title_f = next((f for f in tpl["fields"] if f.get("title")), None)
     title = _display(title_f, ad["f"].get(title_f["key"], ""), data, "uz") if title_f else ""
     head = tpl.get("headline") or tpl["name"]["uz"]  # kanal postidagi bilan bir xil sarlavha
@@ -280,21 +310,61 @@ async def _preview(message: Message, state: FSMContext, user: dict, lang: str) -
     await state.set_state(AdForm.confirm)
     await message.answer(t("ad_preview", lang))
     await message.answer(_preview_text(tpl, ad, data, lang), disable_web_page_preview=True)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [_b(t("ad_send", lang), "send", style="success")],
-        [_b(t("ad_restart", lang), "edit"), _b(t("ad_cancel", lang), "cancel", style="danger")],
+    await message.answer(t("ad_confirm", lang), reply_markup=_confirm_kb(lang))
+
+
+def _confirm_kb(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [_b(t("ad_restart", lang), "edit"), _b(t("ad_send", lang), "send", style="success")],
+        [_b(t("ad_cancel", lang), "cancel", style="danger")],
     ])
-    await message.answer(t("ad_confirm", lang), reply_markup=kb)
 
 
 @router.callback_query(AdForm.confirm, AdCb.filter(F.a == "edit"))
-async def on_restart(cb: CallbackQuery, state: FSMContext, user: dict, lang: str) -> None:
+async def on_edit(cb: CallbackQuery, state: FSMContext, lang: str) -> None:
+    """«✏️ Tahrirlash» — qaysi bandni o'zgartirishni tanlash."""
+    _, _, tpl = await _ctx(state)
+    if not tpl:
+        return await cb.answer()
+    await cb.answer()
+    btns = [_b(f"{f['emoji']} {f['label']}", "field", str(i)) for i, f in enumerate(tpl["fields"])]
+    rows = [btns[i:i + 2] for i in range(0, len(btns), 2)] + [[_b(t("ad_back", lang), "prev")]]
+    try:
+        await cb.message.edit_text(t("ad_edit_pick", lang), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    except Exception:
+        await cb.message.answer(t("ad_edit_pick", lang), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(AdForm.confirm, AdCb.filter(F.a == "field"))
+async def on_edit_field(cb: CallbackQuery, callback_data: AdCb, state: FSMContext, user: dict, lang: str) -> None:
+    ad, _, tpl = await _ctx(state)
+    v = callback_data.v or ""
+    if not tpl or not v.isdigit() or int(v) >= len(tpl["fields"]):
+        return await cb.answer()
     await cb.answer()
     await _drop_kb(cb)
-    ad, _, _ = await _ctx(state)
-    ad["i"] = 0  # avvalgi javoblar ko'rinib turadi (✏️), kerakmasini o'zgartirmasdan o'tkazish mumkin
+    ad["i"], ad["edit"] = int(v), True
     await state.update_data(ad=ad)
     await state.set_state(AdForm.fill)
+    await _ask(cb.message, state, user, lang)
+
+
+@router.callback_query(AdCb.filter(F.a == "prev"))
+async def on_prev(cb: CallbackQuery, state: FSMContext, user: dict, lang: str) -> None:
+    """Tahrirlash menyusidan yoki tahrirlanayotgan savoldan — ko'rib chiqishga qaytish."""
+    ad, _, tpl = await _ctx(state)
+    if not tpl:
+        return await cb.answer()
+    await cb.answer()
+    if await state.get_state() == AdForm.confirm.state:
+        try:
+            return await cb.message.edit_text(t("ad_confirm", lang), reply_markup=_confirm_kb(lang))
+        except Exception:
+            pass
+    await _drop_kb(cb)
+    ad.pop("edit", None)
+    ad["i"] = len(tpl["fields"])
+    await state.update_data(ad=ad)
     await _ask(cb.message, state, user, lang)
 
 

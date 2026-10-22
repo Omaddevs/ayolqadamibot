@@ -91,9 +91,17 @@ T: dict[str, dict[str, str]] = {
     "ad_my_tg": {"uz": "✈️ {u}", "ru": "✈️ {u}"},
     "ad_send_phone": {"uz": "📱 Raqamimni yuborish", "ru": "📱 Отправить мой номер"},
     "ad_preview": {"uz": "👀 <b>E'loningiz shunday ko'rinadi:</b>", "ru": "👀 <b>Так будет выглядеть объявление:</b>"},
-    "ad_confirm": {"uz": "Hammasi to'g'rimi? «Yuborish» bosilgach e'lon admin tekshiruviga ketadi.", "ru": "Всё верно? После «Отправить» объявление уйдёт на проверку."},
-    "ad_send": {"uz": "✅ Yuborish", "ru": "✅ Отправить"},
-    "ad_restart": {"uz": "✏️ Qaytadan to'ldirish", "ru": "✏️ Заполнить заново"},
+    "ad_confirm": {
+        "uz": "Hammasi to'g'rimi? «Jo'natish» bosilgach e'lon admin tekshiruviga ketadi. Biror bandni o'zgartirish uchun — «Tahrirlash».",
+        "ru": "Всё верно? После «Отправить» объявление уйдёт на проверку. Чтобы изменить пункт — «Редактировать».",
+    },
+    "ad_send": {"uz": "📤 Jo'natish", "ru": "📤 Отправить"},
+    "ad_restart": {"uz": "✏️ Tahrirlash", "ru": "✏️ Редактировать"},
+    "ad_edit_pick": {"uz": "✏️ Qaysi bandni o'zgartirasiz?", "ru": "✏️ Какой пункт изменить?"},
+    "ad_card_intro": {
+        "uz": "Savollarga birma-bir javob bering — oxirida e'loningizni ko'rib, tahrirlab, jo'natasiz.",
+        "ru": "Ответьте на вопросы по очереди — в конце увидите объявление, сможете отредактировать и отправить.",
+    },
     "ad_sent": {
         "uz": "✅ <b>E'loningiz #{n} qabul qilindi!</b>\n\nAdmin tekshirgach kanal va guruhlarga joylanadi — natijasini shu yerda xabar qilamiz.",
         "ru": "✅ <b>Объявление #{n} принято!</b>\n\nПосле проверки администратором оно появится в каналах и группах — мы сообщим здесь.",
