@@ -58,7 +58,7 @@ class Act(CallbackData, prefix="act"):
 
 class Phone(CallbackData, prefix="ph"):
     """Kanal postidagi "telefon" tugmasi — bosilganda raqam alert'da ko'rinadi."""
-    kind: str  # apply | post
+    kind: str  # apply | post | contact (admin e'lonidagi «Mijoz raqami»)
     id: int = 0
 
 

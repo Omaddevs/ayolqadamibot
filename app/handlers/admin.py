@@ -9,7 +9,7 @@ import logging
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -22,7 +22,7 @@ from ..middlewares import reset_sub_cache
 from ..services import flow, notify, websync
 from ..states import AdminBroadcast, AdminInput, AdminPost
 from ..texts import t, variants
-from ..utils import classify_target, first_line_title, h, resume_card, short_date, vacancy_card
+from ..utils import classify_target, first_line_title, h, normalize_phone, resume_card, short_date, vacancy_card
 from .base import send_menu
 from .browse import open_filter
 
@@ -788,71 +788,113 @@ async def admin_post_cat(cb: CallbackQuery, callback_data: Pick, state: FSMConte
     await cb.message.edit_text("📍 Shahar:", reply_markup=cities_kb("uz", "acity", skip=True))
 
 
-def _target_kb(field: str, default_value: str, allow_bot: bool) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=f"⭐ Standart: {_describe_value(default_value)}"[:60], callback_data=Pick(f=field, v="def").pack())]]
-    if allow_bot:
-        rows.append([InlineKeyboardButton(text="🤖 Bot orqali ariza", callback_data=Pick(f=field, v="bot").pack())])
-    rows.append([InlineKeyboardButton(text="🔗 Havola / @username / telefon kiritish", callback_data=Pick(f=field, v="input").pack())])
-    rows.append([InlineKeyboardButton(text="🚫 Tugmasiz", callback_data=Pick(f=field, v="none").pack())])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 @router.callback_query(AdminPost.city, Pick.filter(F.f == "acity"))
 async def admin_post_city(cb: CallbackQuery, callback_data: Pick, state: FSMContext, db: Database) -> None:
     data = await state.get_data()
     data["ap"]["city"] = None if callback_data.v == "-" else callback_data.v
+    data["ap"].setdefault("apply_value", "bot")
+    data["ap"].setdefault("extra_buttons", [])
     await state.update_data(ap=data["ap"])
-    await state.set_state(AdminPost.apply)
+    await state.set_state(AdminPost.buttons)
     await cb.answer()
-    await cb.message.edit_text(f"1️⃣ «{h(db.setting('btn_apply_text'))}» tugmasi qayerga olib borsin?",
-                               reply_markup=_target_kb("aap", db.setting("btn_apply_value"), True))
+    text, kb = _buttons_view(db, data["ap"])
+    await cb.message.edit_text(text, reply_markup=kb, disable_web_page_preview=True)
 
 
-async def _ask_post_btn(message: Message, state: FSMContext, db: Database) -> None:
-    await state.set_state(AdminPost.post)
-    await message.answer(f"2️⃣ «{h(db.setting('btn_post_text'))}» tugmasi qayerga olib borsin?",
-                         reply_markup=_target_kb("apo", db.setting("btn_post_value"), False))
+# ---------- post tugmalari: bosib qo'shish (hammasi ixtiyoriy) ----------
+SLOT_ASK = {
+    "phone": "📞 <b>Mijoz raqamini</b> yuboring.\nMasalan: <code>+998 90 123 45 67</code>\n\nKanalda tugma bosilganda raqam ko'rinadi.",
+    "client": "👤 <b>Mijoz havolasini</b> yuboring — nomzodlar unga yozadi.\nMasalan: <code>@hr_manager</code> yoki <code>https://t.me/hr_manager</code>",
+    "admin": "🛠 <b>Admin havolasini</b> yuboring — savollar uchun.\nMasalan: <code>@ayolqadam_admin</code>",
+    "site": "🌐 <b>Sayt havolasini</b> yuboring — batafsil ma'lumot sahifasi.\nMasalan: <code>https://ayolqadami.uz/jobs</code>",
+}
 
 
-async def _choose_target(cb: CallbackQuery, callback_data: Pick, state: FSMContext, db: Database, key: str, input_state, after) -> None:
-    await cb.answer()
-    await cb.message.edit_reply_markup(reply_markup=None)
-    if callback_data.v == "input":
-        await state.set_state(input_state)
-        await cb.message.answer("🔗 Havola, @username yoki telefon raqamini yuboring:\n\n" + VALUE_HELP, disable_web_page_preview=True)
-        return
+def _slot_value(ap: dict, k: str) -> str | None:
+    return next((b["v"] for b in ap.get("extra_buttons") or [] if b.get("k") == k), None)
+
+
+def _pb(text: str, v: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=Pick(f="abt", v=v).pack())
+
+
+def _buttons_view(db: Database, ap: dict) -> tuple[str, InlineKeyboardMarkup]:
+    apply_on = ap.get("apply_value") != "-"
+    lines = [
+        "🔘 <b>Post tugmalari</b>",
+        "Kerakli tugmani bosib qo'shing — <b>hammasi ixtiyoriy</b>. Tayyor bo'lgach «Ko'rib chiqish va joylash»ni bosing.",
+        "",
+        f"🤖 Botda ariza («{h(db.setting('btn_apply_text'))}»): {'✅ bor' if apply_on else '—'}",
+    ]
+    rows = [[_pb(f"🤖 Botda ariza: {'✅ yoqilgan' if apply_on else '⛔ o‘chirilgan'}", "apply")]]
+    for k, (label, _) in flow.EXTRA_SLOTS.items():
+        val = _slot_value(ap, k)
+        lines.append(f"{label}: {h(val) if val else '—'}")
+        if val:
+            rows.append([_pb(f"✏️ {label.split(' /')[0]}: {val}"[:60], f"set-{k}"), _pb("🗑", f"del-{k}")])
+        else:
+            rows.append([_pb(f"➕ {label}", f"set-{k}")])
+    rows.append([_pb("👁 Ko'rib chiqish va joylash", "done")])
+    rows.append([_pb("❌ Bekor qilish", "cancel")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(StateFilter(AdminPost.buttons, AdminPost.btn_input), Pick.filter(F.f == "abt"))
+async def admin_post_buttons(cb: CallbackQuery, callback_data: Pick, state: FSMContext, db: Database,
+                             user: dict, lang: str, is_admin: bool) -> None:
     data = await state.get_data()
-    data["ap"][key] = {"def": None, "bot": "bot", "none": "-"}[callback_data.v]
-    await state.update_data(ap=data["ap"])
-    await after(cb.message, state, db)
+    ap = data["ap"]
+    action, _, k = callback_data.v.partition("-")
+    await cb.answer()
+    if action == "cancel":
+        await state.set_state(None)
+        await cb.message.edit_reply_markup(reply_markup=None)
+        return await send_menu(cb.message, user, lang, is_admin, "Bekor qilindi.")
+    if action == "done":
+        await cb.message.edit_reply_markup(reply_markup=None)
+        return await _post_preview(cb.message, state, db)
+    if action == "set" and k in flow.EXTRA_SLOTS:
+        await state.update_data(ap_slot=k)
+        await state.set_state(AdminPost.btn_input)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[_pb("⬅️ Orqaga", "back")]])
+        return await cb.message.edit_text(SLOT_ASK[k], reply_markup=kb, disable_web_page_preview=True)
+    if action == "apply":
+        ap["apply_value"] = "bot" if ap.get("apply_value") == "-" else "-"
+    elif action == "del":
+        ap["extra_buttons"] = [b for b in ap.get("extra_buttons") or [] if b.get("k") != k]
+    await state.update_data(ap=ap)
+    await state.set_state(AdminPost.buttons)
+    text, kb = _buttons_view(db, ap)
+    await cb.message.edit_text(text, reply_markup=kb, disable_web_page_preview=True)
 
 
-async def _input_target(message: Message, state: FSMContext, db: Database, key: str, after) -> None:
+@router.message(AdminPost.btn_input, F.text)
+async def admin_post_button_input(message: Message, state: FSMContext, db: Database) -> None:
+    data = await state.get_data()
+    ap, k = data["ap"], data.get("ap_slot")
     value = (message.text or "").strip()
-    if classify_target(value)[0] in ("none", "bot"):
-        await message.answer("⚠️ Tanilmadi. Masalan: <code>https://t.me/hr_admin</code>, <code>@hr_admin</code> yoki <code>+998901234567</code>")
-        return
-    data = await state.get_data()
-    data["ap"][key] = value
-    await state.update_data(ap=data["ap"])
-    await after(message, state, db)
-
-
-@router.callback_query(AdminPost.apply, Pick.filter(F.f == "aap"))
-async def admin_post_apply(cb: CallbackQuery, callback_data: Pick, state: FSMContext, db: Database) -> None:
-    await _choose_target(cb, callback_data, state, db, "apply_value", AdminPost.apply_input, _ask_post_btn)
-
-
-@router.message(AdminPost.apply_input, F.text)
-async def admin_post_apply_input(message: Message, state: FSMContext, db: Database) -> None:
-    await _input_target(message, state, db, "apply_value", _ask_post_btn)
+    if k == "phone":
+        value = normalize_phone(value)
+        if not value:
+            return await message.answer("⚠️ Raqam noto'g'ri. Masalan: <code>+998 90 123 45 67</code>")
+    elif classify_target(value)[0] != "url":
+        return await message.answer("⚠️ Havola tanilmadi. Masalan: <code>@username</code> yoki <code>https://...</code>")
+    ap["extra_buttons"] = [b for b in ap.get("extra_buttons") or [] if b.get("k") != k] + [{"k": k, "v": value}]
+    if k == "phone":
+        ap["contact_phone"] = value  # botdagi vakansiya kartochkasida ham ko'rinadi
+    await state.update_data(ap=ap, ap_slot=None)
+    await state.set_state(AdminPost.buttons)
+    text, kb = _buttons_view(db, ap)
+    await message.answer(text, reply_markup=kb, disable_web_page_preview=True)
 
 
 async def _post_preview(message: Message, state: FSMContext, db: Database) -> None:
     data = await state.get_data()
     ap = data["ap"]
     await state.set_state(AdminPost.confirm)
-    kb = await flow.channel_kb(message.bot, db, {"id": 0, "apply_value": ap.get("apply_value"), "post_value": ap.get("post_value")})
+    kb = await flow.channel_kb(message.bot, db, {
+        "id": 0, "apply_value": ap.get("apply_value"), "post_value": None, "extra_buttons": ap.get("extra_buttons") or [],
+    })
     await message.answer("👁 <b>Kanalda shunday ko'rinadi:</b>")
     try:
         await message.bot.copy_message(message.chat.id, ap["raw_chat_id"], ap["raw_message_id"], reply_markup=kb)
@@ -867,29 +909,24 @@ async def _post_preview(message: Message, state: FSMContext, db: Database) -> No
         extra.append(cat_name(ap["category"]))
     if ap.get("city"):
         extra.append(ap["city"])
-    kb2 = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Joylash", callback_data=Pick(f="aok", v="1").pack()),
-        InlineKeyboardButton(text="❌ Bekor", callback_data=Pick(f="aok", v="0").pack()),
-    ]])
+    kb2 = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Joylash", callback_data=Pick(f="aok", v="1").pack())],
+        [InlineKeyboardButton(text="✏️ Tugmalarni o'zgartirish", callback_data=Pick(f="aok", v="edit").pack()),
+         InlineKeyboardButton(text="❌ Bekor", callback_data=Pick(f="aok", v="0").pack())],
+    ])
     await message.answer(f"📡 Kanallar: {where}\n🤖 Bot va 🌐 sayt: ha" + (f"\n🏷 {h(' · '.join(extra))}" if extra else "") + "\n\nJoylaymizmi?", reply_markup=kb2)
-
-
-@router.callback_query(AdminPost.post, Pick.filter(F.f == "apo"))
-async def admin_post_post(cb: CallbackQuery, callback_data: Pick, state: FSMContext, db: Database) -> None:
-    await _choose_target(cb, callback_data, state, db, "post_value", AdminPost.post_input, _post_preview)
-
-
-@router.message(AdminPost.post_input, F.text)
-async def admin_post_post_input(message: Message, state: FSMContext, db: Database) -> None:
-    await _input_target(message, state, db, "post_value", _post_preview)
 
 
 @router.callback_query(AdminPost.confirm, Pick.filter(F.f == "aok"))
 async def admin_post_confirm(cb: CallbackQuery, callback_data: Pick, state: FSMContext, db: Database, config: Config, bot: Bot,
                              user: dict, lang: str, is_admin: bool) -> None:
     data = await state.get_data()
-    await state.set_state(None)
     await cb.answer()
+    if callback_data.v == "edit":
+        await state.set_state(AdminPost.buttons)
+        text, kb = _buttons_view(db, data["ap"])
+        return await cb.message.edit_text(text, reply_markup=kb, disable_web_page_preview=True)
+    await state.set_state(None)
     await cb.message.edit_reply_markup(reply_markup=None)
     if callback_data.v != "1":
         await send_menu(cb.message, user, lang, is_admin, "Bekor qilindi.")

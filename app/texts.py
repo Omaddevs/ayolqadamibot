@@ -166,6 +166,8 @@ T: dict[str, dict[str, str]] = {
     "b_res_pdf": {"uz": "📄 Resume PDF", "ru": "📄 Резюме PDF"},
     "b_res_doc": {"uz": "📝 Resume DOC", "ru": "📝 Резюме DOC"},
     "b_invite": {"uz": "✉️ Taklif yuborish", "ru": "✉️ Пригласить"},
+    "b_share": {"uz": "📤 Ulashish", "ru": "📤 Поделиться"},
+    "share_text": {"uz": "💼 {title} — e'lon #{id} (AyolQadam)", "ru": "💼 {title} — объявление #{id} (AyolQadam)"},
     "b_filter": {"uz": "🔎 Filtr", "ru": "🔎 Фильтр"},
     "b_channel": {"uz": "📢 Kanalda ko'rish", "ru": "📢 Смотреть в канале"},
 

@@ -49,10 +49,8 @@ class AdminPost(StatesGroup):
     message = State()
     cat = State()
     city = State()
-    apply = State()
-    apply_input = State()
-    post = State()
-    post_input = State()
+    buttons = State()  # post tugmalari: bosib qo'shish / o'chirish
+    btn_input = State()  # tanlangan tugma qiymatini kutish
     confirm = State()
 
 

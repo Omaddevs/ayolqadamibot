@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS vacancies (
     media_type TEXT, media_file_id TEXT,
     raw_chat_id INTEGER, raw_message_id INTEGER,
     apply_value TEXT, post_value TEXT,
+    extra_buttons TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'pending',
     views INTEGER NOT NULL DEFAULT 0,
     channel_posts TEXT NOT NULL DEFAULT '[]',
@@ -127,7 +128,7 @@ DEFAULT_SETTINGS = {
     ], ensure_ascii=False),
 }
 
-JSON_FIELDS = {"skills", "languages", "job_types", "channel_posts"}
+JSON_FIELDS = {"skills", "languages", "job_types", "channel_posts", "extra_buttons"}
 
 
 def now() -> str:
@@ -158,6 +159,7 @@ VACANCY_FIELDS = {
     "user_id", "source", "ext_id", "title", "company", "category", "city", "job_type", "salary_from", "salary_to",
     "exp_level", "description", "requirements", "conditions", "contact_phone", "contact_tg", "media_type",
     "media_file_id", "raw_chat_id", "raw_message_id", "apply_value", "post_value", "status", "channel_posts", "expires_at",
+    "extra_buttons",
 }
 
 
@@ -191,6 +193,10 @@ class Database:
             await self.conn.execute("ALTER TABLE users ADD COLUMN phone_key TEXT")
         # bitta raqam — bitta faol hisob
         await self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_phone_key ON users(phone_key) WHERE phone_key IS NOT NULL")
+        # admin e'lonidagi qo'shimcha tugmalar: [{"k": phone|client|admin|site, "v": qiymat}]
+        async with self.conn.execute("PRAGMA table_info(vacancies)") as cur:
+            if "extra_buttons" not in {r[1] for r in await cur.fetchall()}:
+                await self.conn.execute("ALTER TABLE vacancies ADD COLUMN extra_buttons TEXT NOT NULL DEFAULT '[]'")
 
     async def close(self) -> None:
         if self.conn:

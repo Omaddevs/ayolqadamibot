@@ -58,6 +58,29 @@ def _target_button(text: str, value: str | None, deep_link: str, phone_cb: str) 
 
 
 BUTTON_STYLES = {"", "primary", "danger", "success"}
+
+# Admin e'lonidagi qo'shimcha tugmalar (hammasi ixtiyoriy): kalit -> (admin paneldagi nom, kanaldagi tugma matni)
+EXTRA_SLOTS = {
+    "phone": ("📞 Mijoz raqami", "📞 {v}"),
+    "client": ("👤 Mijoz URL / @username", "✍️ Murojaat qilish"),
+    "admin": ("🛠 Admin URL / @username", "👩‍💼 Admin bilan bog'lanish"),
+    "site": ("🌐 Website URL", "🌐 Batafsil"),
+}
+
+
+def extra_rows(v: dict) -> list[list[InlineKeyboardButton]]:
+    rows = []
+    for b in v.get("extra_buttons") or []:
+        slot, val = EXTRA_SLOTS.get(b.get("k")), b.get("v")
+        if not slot or not val:
+            continue
+        if b["k"] == "phone":  # Telegram tugmasi qo'ng'iroq qila olmaydi — bosilganda raqam oynada ko'rinadi
+            rows.append([InlineKeyboardButton(text=slot[1].format(v=val), callback_data=Phone(kind="contact", id=v.get("id") or 0).pack())])
+            continue
+        kind, url = classify_target(val)
+        if kind == "url":
+            rows.append([InlineKeyboardButton(text=slot[1], url=url)])
+    return rows
 _URL_RE = re.compile(r"^(https?://|tg://)\S+$")
 
 
@@ -99,6 +122,7 @@ async def channel_kb(bot: Bot, db: Database, v: dict | None = None, resume_id: i
                              Phone(kind="apply", id=v["id"]).pack())
         if btn:
             rows.append([btn])
+        rows.extend(extra_rows(v))
     if resume_id is not None:
         rows.append([InlineKeyboardButton(text="📄 Rezyume (PDF / Word)", url=f"https://t.me/{me}?start=res_{resume_id}")])
     custom = load_channel_buttons(db)

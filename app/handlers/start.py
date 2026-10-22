@@ -120,6 +120,12 @@ async def on_role(cb: CallbackQuery, callback_data: RoleCb, state: FSMContext, d
 @router.callback_query(Phone.filter())
 async def on_phone_button(cb: CallbackQuery, callback_data: Phone, db: Database, lang: str) -> None:
     """Kanal postidagi tugma telefon raqamga sozlangan bo'lsa — raqam alert oynada ko'rinadi."""
+    if callback_data.kind == "contact":  # admin e'lonidagi «📞 Mijoz raqami»
+        v = await db.get_vacancy(callback_data.id) if callback_data.id else None
+        phone = next((b["v"] for b in (v or {}).get("extra_buttons") or [] if b.get("k") == "phone"), None)
+        if not phone:
+            return await cb.answer()
+        return await cb.answer(t("phone_alert", lang, phone=phone), show_alert=True)
     field = "apply_value" if callback_data.kind == "apply" else "post_value"
     v = await db.get_vacancy(callback_data.id) if callback_data.id else None
     value = v[field] if v and v.get(field) is not None else db.setting(f"btn_{field}")

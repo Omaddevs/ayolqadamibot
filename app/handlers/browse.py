@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -24,7 +25,7 @@ from ..keyboards import filter_kb, filter_values_kb
 from ..services import files, flow, notify, websync
 from ..states import Browse
 from ..texts import t
-from ..utils import CAPTION_LIMIT, classify_target, contact_lines, h, resume_card, short_date, vacancy_card
+from ..utils import CAPTION_LIMIT, classify_target, contact_lines, h, normalize_phone, resume_card, short_date, vacancy_card
 
 router = Router(name="browse")
 
@@ -107,20 +108,26 @@ async def get_item(db: Database, state: FSMContext, uid: int, kind: str, idx: in
 
 
 # ---------- vakansiya kartasi ----------
-async def vacancy_view(db: Database, v: dict, lang: str, uid: int, is_admin: bool, kind: str, idx: int = 0, total: int = 1):
+async def vacancy_view(db: Database, v: dict, lang: str, uid: int, is_admin: bool, kind: str, idx: int = 0, total: int = 1,
+                       bot: Bot | None = None):
     status = "" if v["status"] == "active" else f"{t('st_' + v['status'], lang)}\n\n"
-    footer = t("v_views", lang, n=v.get("views") or 0, date=short_date(v.get("created_at")))
+    footer = f"🆔 {v['id']} · " + t("v_views", lang, n=v.get("views") or 0, date=short_date(v.get("created_at")))
     has_media = bool(v.get("media_type") and v.get("media_file_id"))
     limit = CAPTION_LIMIT - len(status) if has_media else 4000
     text = status + vacancy_card(v, lang, limit, footer)
     fav = await db.is_fav(uid, "vac", v["id"])
+    # «Bog'lanish» — e'lon egasining chati to'g'ridan-to'g'ri ochiladi; aloqa topilmasa — ogohlantirish oynasi
+    contact_url = vacancy_contact_url(v)
+    contact_btn = (InlineKeyboardButton(text=t("b_contact", lang), url=contact_url) if contact_url
+                   else InlineKeyboardButton(text=t("b_contact", lang), callback_data=Act(a="vc", id=v["id"], i=idx, k=kind).pack()))
     rows = [
-        [InlineKeyboardButton(text=t("b_contact", lang), callback_data=Act(a="vc", id=v["id"], i=idx, k=kind).pack()),
-         InlineKeyboardButton(text=t("b_apply", lang), callback_data=Act(a="ap", id=v["id"], i=idx, k=kind).pack())],
+        [contact_btn, InlineKeyboardButton(text=t("b_apply", lang), callback_data=Act(a="ap", id=v["id"], i=idx, k=kind).pack())],
         [InlineKeyboardButton(text=t("b_vac_pdf", lang), callback_data=Act(a="vp", id=v["id"], i=idx, k=kind).pack()),
          InlineKeyboardButton(text=t("b_vac_doc", lang), callback_data=Act(a="vd", id=v["id"], i=idx, k=kind).pack()),
          InlineKeyboardButton(text=t("b_saved" if fav else "b_save", lang), callback_data=Act(a="vf", id=v["id"], i=idx, k=kind).pack())],
     ]
+    if bot and v["status"] == "active":
+        rows.append([InlineKeyboardButton(text=t("b_share", lang), url=share_url(await flow.bot_username(bot), v, lang))])
     if kind in ("v", "fv") and total > 1:
         rows.append(_nav_row(kind, idx, total))
     if kind == "v":
@@ -169,7 +176,7 @@ async def show(event: Message | CallbackQuery, kind: str, idx: int, *, db: Datab
     if kind in VAC_KINDS:
         if item.get("user_id") != user["id"]:
             await db.bump_vacancy_views(item["id"])
-        view = await vacancy_view(db, item, lang, user["id"], is_admin, kind, idx, total)
+        view = await vacancy_view(db, item, lang, user["id"], is_admin, kind, idx, total, bot=bot)
     else:
         if item.get("user_id") != user["id"]:
             await db.bump_resume_views(item["id"])
@@ -185,7 +192,7 @@ async def show_vacancy(event: Message | CallbackQuery, vid: int, *, db: Database
         return
     if v.get("user_id") != user["id"]:
         await db.bump_vacancy_views(vid)
-    await render(event, bot, *await vacancy_view(db, v, lang, user["id"], is_admin, "one"))
+    await render(event, bot, *await vacancy_view(db, v, lang, user["id"], is_admin, "one", bot=bot))
 
 
 async def show_resume(event: Message | CallbackQuery, rid: int, *, db: Database, bot: Bot, user: dict, lang: str, is_admin: bool) -> None:
@@ -265,7 +272,8 @@ async def on_nav(cb: CallbackQuery, callback_data: Nav, state: FSMContext, db: D
 
 
 # ---------- vakansiya amallari ----------
-def _vacancy_contacts(v: dict) -> str:
+def _contact_parts(v: dict) -> tuple[str | None, str | None, str | None]:
+    """(telefon, @telegram, boshqa havola) — e'lon maydonlaridan, bo'lmasa tugma sozlamasi va matnidan."""
     phone, tg, extra = v.get("contact_phone"), v.get("contact_tg"), None
     if not phone and not tg:
         kind, val = classify_target(v.get("apply_value"))
@@ -280,7 +288,32 @@ def _vacancy_contacts(v: dict) -> str:
         if not tg and not extra:
             m = TG_IN_TEXT.search(text)
             tg = m.group(0) if m else None
-    return contact_lines(phone, tg, extra)
+    return phone, tg, extra
+
+
+def _vacancy_contacts(v: dict) -> str:
+    return contact_lines(*_contact_parts(v))
+
+
+def vacancy_contact_url(v: dict) -> str | None:
+    """«Bog'lanish» havolasi: Telegram bo'lsa — o'sha chat, boshqa havola — o'sha, faqat raqam bo'lsa — shu raqamdagi
+    Telegram hisobi (t.me/+998...). Telegram tugmasi to'g'ridan-to'g'ri qo'ng'iroq qila olmaydi."""
+    phone, tg, extra = _contact_parts(v)
+    if tg:
+        kind, url = classify_target("@" + tg.strip().lstrip("@"))
+        if kind == "url":
+            return url
+    if extra:
+        return extra
+    digits = re.sub(r"\D", "", normalize_phone(phone) or "")
+    return f"https://t.me/+{digits}" if len(digits) >= 11 else None
+
+
+def share_url(me: str, v: dict, lang: str) -> str:
+    """«Ulashish»: Telegram'ning ulashish oynasi; do'st havolani bossa bot shu e'lonni (ID bo'yicha) ochadi."""
+    link = f"https://t.me/{me}?start=vac_{v['id']}"
+    text = t("share_text", lang, id=v["id"], title=v.get("title") or "")
+    return f"https://t.me/share/url?url={quote(link, safe='')}&text={quote(text, safe='')}"
 
 
 @router.callback_query(Act.filter(F.a == "open"))
@@ -295,6 +328,8 @@ async def act_vac_contact(cb: CallbackQuery, callback_data: Act, db: Database, l
     if not v:
         return await cb.answer(t("not_found", lang), show_alert=True)
     lines = _vacancy_contacts(v)
+    if not lines:  # chatga xabar yozilmaydi — faqat kichik oyna
+        return await cb.answer(t("no_contact", lang), show_alert=True)
     await cb.answer()
     await cb.message.answer(
         t("contact_info", lang, lines=lines) if lines else t("no_contact", lang),
@@ -314,7 +349,7 @@ async def act_vac_file(cb: CallbackQuery, callback_data: Act, db: Database, bot:
 
 
 @router.callback_query(Act.filter(F.a == "vf"))
-async def act_vac_fav(cb: CallbackQuery, callback_data: Act, state: FSMContext, db: Database, user: dict, lang: str, is_admin: bool) -> None:
+async def act_vac_fav(cb: CallbackQuery, callback_data: Act, state: FSMContext, db: Database, bot: Bot, user: dict, lang: str, is_admin: bool) -> None:
     added = await db.toggle_fav(user["id"], "vac", callback_data.id)
     await cb.answer(t("fav_added" if added else "fav_removed", lang))
     v = await db.get_vacancy(callback_data.id)
@@ -324,7 +359,7 @@ async def act_vac_fav(cb: CallbackQuery, callback_data: Act, state: FSMContext, 
     total = 1
     if kind in ("v", "fv"):
         _, total, _ = await get_item(db, state, user["id"], kind, callback_data.i)
-    _, kb, _, _ = await vacancy_view(db, v, lang, user["id"], is_admin, kind, callback_data.i, max(total, 1))
+    _, kb, _, _ = await vacancy_view(db, v, lang, user["id"], is_admin, kind, callback_data.i, max(total, 1), bot=bot)
     try:
         await cb.message.edit_reply_markup(reply_markup=kb)
     except TelegramBadRequest:
