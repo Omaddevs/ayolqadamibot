@@ -6,3 +6,4 @@ data/*.db-*
 data/*.log*
 .venv/
 venv/
+data/*.bak*

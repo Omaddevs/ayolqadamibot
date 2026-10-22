@@ -53,6 +53,9 @@ def _state_name(state: str | None) -> str | None:
 
 async def start_resume(message: Message, state: FSMContext, db: Database, user: dict, lang: str) -> None:
     old = await db.resume_by_user(user["id"]) or {}
+    # ro'yxatdan o'tishda tasdiqlangan raqam — telefon qadamida tayyor qiymat («⏭ O'tkazib yuborish» bilan qoldiriladi)
+    if not old.get("phone") and user.get("phone"):
+        old = {**old, "phone": user["phone"]}
     keep = {k: v for k, v in (await state.get_data()).items() if k in ("vf", "rf")}
     await state.clear()
     await state.update_data(r={}, old=old, **keep)

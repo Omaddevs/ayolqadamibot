@@ -41,6 +41,10 @@ class Config:
 
     vacancy_days: int = 30       # vakansiya necha kundan keyin avtomatik yopiladi
 
+    # AyolQadami serveri (Next.js, web admin panel): «E'lon berish» shablonlari va moderatsiya
+    server_url: str = ""         # masalan https://api.ayolqadami.uz (lokal: http://localhost:3100)
+    server_api_key: str = ""     # serverdagi BOT_API_KEY bilan bir xil
+
 
 def load_config() -> Config:
     token = os.getenv("BOT_TOKEN", "").strip()
@@ -60,6 +64,8 @@ def load_config() -> Config:
         api_port=int(os.getenv("API_PORT", "8080") or 8080),
         api_cors=os.getenv("API_CORS", "*").strip() or "*",
         vacancy_days=int(os.getenv("VACANCY_DAYS", "30") or 30),
+        server_url=os.getenv("SERVER_URL", "").strip().rstrip("/"),
+        server_api_key=(os.getenv("SERVER_API_KEY", "") or os.getenv("WEB_API_KEY", "")).strip(),
     )
 
 

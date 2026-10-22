@@ -38,6 +38,10 @@
 Admin vakansiya yoki rezyume kartochkasida **🛠 Yopish**, **🗑 O'chirish** va **🙈 Yashirish** tugmalarini ham ko'radi.
 
 Boshqa imkoniyatlar:
+- 📱 **Telefon orqali ro'yxatdan o'tish / kirish**: til tanlangach foydalanuvchi «📱 Raqamni yuborish» tugmasi bilan o'z raqamini yuboradi;
+  raqam yuborilmaguncha botning boshqa bo'limlari yopiq. Faqat o'z raqami qabul qilinadi. Shu raqam bilan avval boshqa
+  Telegram hisobda ro'yxatdan o'tilgan bo'lsa — rezyume, arizalar, vakansiyalar, saqlanganlar va rol yangi hisobga ko'chadi
+  (ban ham). Tasdiqlangan raqam rezyume ustasida tayyor qiymat bo'lib turadi. Adminlarga (`.env`dagi ID) bu talab yo'q.
 - 🇺🇿 O'zbek va 🇷🇺 rus tillari.
 - Vakansiya 30 kundan keyin avtomatik yopiladi va egasiga xabar boradi.
 - Botni bloklagan foydalanuvchilar avtomatik belgilanadi va tarqatishda o'tkazib yuboriladi.
@@ -132,3 +136,14 @@ app/
   api/server.py    REST API (aiohttp)
 assets/fonts       DejaVu shriftlari (PDF'da o'zbek/rus harflari uchun)
 ```
+
+
+## «📢 E'lon berish» — web admin panel orqali moderatsiya
+
+Shablonlar (vakansiya, IT vakansiya, uy xizmati, xizmat taklifi, ish joyi kerak, ustoz) AyolQadami serveridan olinadi
+(`GET /api/v1/bot/ad-templates`). Javoblar `POST /api/v1/bot/ads` ga yuboriladi va **Admin panel → E'lonlar** da
+tekshiriladi; admin kanallarni tanlab joylaydi, natija e'lon beruvchiga shu bot orqali keladi.
+
+`.env`: `SERVER_URL` (masalan `https://api.ayolqadami.uz`) va `SERVER_API_KEY` (serverdagi `BOT_API_KEY`).
+
+Menyu inline tugmalarda (`style="primary"` — ko'k fon, oq matn); pastki doimiy klaviatura faqat adminlarga («🛠 Admin panel»).

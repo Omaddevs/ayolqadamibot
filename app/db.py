@@ -117,6 +117,14 @@ DEFAULT_SETTINGS = {
     "btn_apply_value": "bot",  # bot | https://... | @username | +998...
     "btn_post_text": "📢 E'lon berish",
     "btn_post_value": "bot",
+    # Kanal posti tagidagi rangli tugmalar (JSON): [{"text", "url", "style": "" | "primary" | "danger" | "success"}].
+    # Sayt admin paneli API orqali o'zgartiradi. url'da: {post} — botda e'lon berish, {site} — sayt, {bot} — bot.
+    # Bo'sh ro'yxat "[]" bo'lsa — eski yagona «E'lon berish» tugmasi (btn_post_*) ishlaydi.
+    "channel_buttons": json.dumps([
+        {"text": "📢 E'lon joylash / Разместить вакансию", "url": "{post}", "style": "primary"},
+        {"text": "🗂 Kanallar to'plami / Подборка каналов", "url": "", "style": "danger"},
+        {"text": "💼 Website AyolQadami", "url": "{site}", "style": "success"},
+    ], ensure_ascii=False),
 }
 
 JSON_FIELDS = {"skills", "languages", "job_types", "channel_posts"}
@@ -166,11 +174,23 @@ class Database:
         await self.conn.execute("PRAGMA journal_mode=WAL")
         await self.conn.execute("PRAGMA foreign_keys=ON")
         await self.conn.executescript(SCHEMA)
+        await self._migrate()
         for k, v in DEFAULT_SETTINGS.items():
             await self.conn.execute("INSERT OR IGNORE INTO settings(key, value) VALUES(?, ?)", (k, v))
         await self.conn.commit()
         async with self.conn.execute("SELECT key, value FROM settings") as cur:
             self._settings = {r["key"]: r["value"] for r in await cur.fetchall()}
+
+    async def _migrate(self) -> None:
+        """Telefon orqali ro'yxatdan o'tish uchun ustunlar (eski bazalarda yo'q bo'lishi mumkin)."""
+        async with self.conn.execute("PRAGMA table_info(users)") as cur:
+            cols = {r[1] for r in await cur.fetchall()}
+        if "verified_at" not in cols:
+            await self.conn.execute("ALTER TABLE users ADD COLUMN verified_at TEXT")
+        if "phone_key" not in cols:
+            await self.conn.execute("ALTER TABLE users ADD COLUMN phone_key TEXT")
+        # bitta raqam — bitta faol hisob
+        await self.conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_phone_key ON users(phone_key) WHERE phone_key IS NOT NULL")
 
     async def close(self) -> None:
         if self.conn:
@@ -231,6 +251,73 @@ class Database:
             return
         cols = ", ".join(f"{k}=?" for k in fields)
         await self.execute(f"UPDATE users SET {cols} WHERE id=?", (*fields.values(), uid))
+
+    async def user_by_phone_key(self, key: str) -> dict | None:
+        return await self.fetchone("SELECT * FROM users WHERE phone_key=?", (key,))
+
+    async def claim_phone(self, uid: int, phone: str, key: str) -> dict:
+        """Foydalanuvchi o'z raqamini tasdiqladi. Shu raqam bilan avval boshqa Telegram hisobda ro'yxatdan
+        o'tilgan bo'lsa — o'sha hisobning ma'lumotlari (rezyume, arizalar, vakansiyalar, saqlanganlar, rol) shu hisobga
+        ko'chiriladi. Natija: {"restored": bool, "resume": bool, "apps": n, "vacs": n, "favs": n}."""
+        old = await self.user_by_phone_key(key)
+        result = {"restored": False, "resume": False, "apps": 0, "vacs": 0, "favs": 0}
+        conn = self.conn
+        try:
+            if old and old["id"] != uid:
+                result = await self._merge_user(old, uid)
+                # eski hisob raqamdan ajratiladi (unique indeks bo'shaydi)
+                await conn.execute("UPDATE users SET phone_key=NULL, verified_at=NULL WHERE id=?", (old["id"],))
+            await conn.execute("UPDATE users SET phone=?, phone_key=?, verified_at=? WHERE id=?", (phone, key, now(), uid))
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
+        return result
+
+    async def _merge_user(self, old: dict, new_id: int) -> dict:
+        """old hisobdagi hamma narsani new_id ga ko'chiradi (commit chaqiruvchida)."""
+        conn, old_id = self.conn, old["id"]
+
+        async def one(sql: str, params: tuple) -> Any:
+            async with conn.execute(sql, params) as cur:
+                row = await cur.fetchone()
+                return row[0] if row else None
+
+        res = {"restored": True, "resume": False, "apps": 0, "vacs": 0, "favs": 0}
+        # --- rezyume: ikkalasida bo'lsa — eng so'nggi yangilangani qoladi ---
+        old_r = await self.fetchone("SELECT id, updated_at FROM resumes WHERE user_id=?", (old_id,))
+        new_r = await self.fetchone("SELECT id, updated_at FROM resumes WHERE user_id=?", (new_id,))
+        if old_r:
+            res["resume"] = True
+            if new_r:
+                keep, drop = (old_r, new_r) if (old_r["updated_at"] or "") >= (new_r["updated_at"] or "") else (new_r, old_r)
+                await conn.execute("UPDATE applications SET resume_id=? WHERE resume_id=?", (keep["id"], drop["id"]))
+                await conn.execute("UPDATE OR IGNORE invites SET resume_id=? WHERE resume_id=?", (keep["id"], drop["id"]))
+                await conn.execute("UPDATE OR IGNORE favorites SET item_id=? WHERE kind='res' AND item_id=?", (keep["id"], drop["id"]))
+                await conn.execute("DELETE FROM invites WHERE resume_id=?", (drop["id"],))
+                await conn.execute("DELETE FROM favorites WHERE kind='res' AND item_id=?", (drop["id"],))
+                await conn.execute("DELETE FROM resumes WHERE id=?", (drop["id"],))
+                await conn.execute("UPDATE resumes SET user_id=? WHERE id=?", (new_id, keep["id"]))
+            else:
+                await conn.execute("UPDATE resumes SET user_id=? WHERE id=?", (new_id, old_r["id"]))
+        # --- vakansiyalar ---
+        res["vacs"] = await one("SELECT COUNT(*) FROM vacancies WHERE user_id=?", (old_id,)) or 0
+        await conn.execute("UPDATE vacancies SET user_id=? WHERE user_id=?", (new_id, old_id))
+        # --- arizalar, saqlanganlar, takliflar (takrorlanadiganlari tashlab yuboriladi) ---
+        res["apps"] = await one("SELECT COUNT(*) FROM applications WHERE user_id=?", (old_id,)) or 0
+        await conn.execute("UPDATE OR IGNORE applications SET user_id=? WHERE user_id=?", (new_id, old_id))
+        await conn.execute("DELETE FROM applications WHERE user_id=?", (old_id,))
+        res["favs"] = await one("SELECT COUNT(*) FROM favorites WHERE user_id=?", (old_id,)) or 0
+        await conn.execute("UPDATE OR IGNORE favorites SET user_id=? WHERE user_id=?", (new_id, old_id))
+        await conn.execute("DELETE FROM favorites WHERE user_id=?", (old_id,))
+        await conn.execute("UPDATE OR IGNORE invites SET employer_id=? WHERE employer_id=?", (new_id, old_id))
+        await conn.execute("DELETE FROM invites WHERE employer_id=?", (old_id,))
+        # --- profil: rol va bildirishnoma sozlamasi; ban — yangi hisob orqali chetlab o'tib bo'lmaydi ---
+        await conn.execute(
+            "UPDATE users SET role=COALESCE(role, ?), notify=?, is_banned=MAX(is_banned, ?) WHERE id=?",
+            (old.get("role"), old.get("notify", 1), old.get("is_banned", 0), new_id),
+        )
+        return res
 
     async def user_ids(self, audience: str = "all") -> list[int]:
         where = "is_blocked=0 AND is_banned=0"
@@ -485,6 +572,25 @@ class Database:
             "top_cities": await self.fetchall(
                 "SELECT city, COUNT(*) AS n FROM vacancies WHERE status='active' AND city IS NOT NULL GROUP BY city ORDER BY n DESC LIMIT 5"
             ),
+        }
+
+    async def stats_extra(self) -> dict:
+        """Admin panel dashboard'i uchun qo'shimcha: kunlik dinamika (14 kun, UTC+5) va tarqatishlar."""
+        since = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat(timespec="seconds")
+
+        async def daily(sql: str) -> dict:
+            async with self.conn.execute(sql, (since,)) as cur:
+                return {r[0]: r[1] for r in await cur.fetchall()}
+
+        # created_at — ISO UTC; Toshkent kuni bo'yicha guruhlash
+        day = "date(datetime(substr(created_at, 1, 19), '+5 hours'))"
+        last = await self.fetchone("SELECT total, sent, failed, created_at FROM broadcasts ORDER BY id DESC LIMIT 1")
+        return {
+            "verified": await self.scalar("SELECT COUNT(*) FROM users WHERE verified_at IS NOT NULL"),
+            "daily_users": await daily(f"SELECT {day}, COUNT(*) FROM users WHERE created_at>=? GROUP BY 1"),
+            "daily_apps": await daily(f"SELECT {day}, COUNT(*) FROM applications WHERE created_at>=? GROUP BY 1"),
+            "broadcasts": await self.scalar("SELECT COUNT(*) FROM broadcasts"),
+            "last_broadcast": last,
         }
 
     async def log_broadcast(self, admin_id: int, audience: str, total: int, sent: int, failed: int) -> None:

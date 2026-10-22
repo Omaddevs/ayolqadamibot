@@ -10,7 +10,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
-from .callbacks import Flt, LangCb, Pick, RoleCb, SubCb
+from .callbacks import Flt, LangCb, MenuCb, Pick, RoleCb, SubCb
 from .constants import CATEGORIES, CITIES, EDU_LEVELS, EXP_LEVELS, JOB_TYPES, LANGUAGES
 from .texts import t
 
@@ -33,6 +33,29 @@ def sub_kb(channels: list[dict], lang: str) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=f"➕ {ch['title'] or 'Kanal'}", url=ch["link"])] for ch in channels if ch.get("link")]
     rows.append([InlineKeyboardButton(text=t("sub_check", lang), callback_data=SubCb().pack())])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+MENU_STYLE = "primary"  # Telegram'da loyiha rangiga eng yaqin: ko'k fon, oq matn
+
+
+def main_menu_inline(lang: str, role: str | None) -> InlineKeyboardMarkup:
+    """Asosiy menyu — inline tugmalar (rangli). Har bir tugma MenuCb(a=...) callback'i."""
+    def b(key: str, a: str, style: str | None = MENU_STYLE) -> InlineKeyboardButton:
+        return InlineKeyboardButton(text=t(key, lang), callback_data=MenuCb(a=a).pack(), style=style)
+    if role == "employer":
+        rows = [[b("m_post_ad", "post_ad")], [b("m_candidates", "candidates"), b("m_my_ads", "my_ads")],
+                [b("m_my_vacs", "my_vacs"), b("m_saved", "saved")]]
+    else:
+        rows = [[b("m_jobs", "jobs"), b("m_resume", "resume")], [b("m_apps", "apps"), b("m_saved", "saved")],
+                [b("m_post_ad", "post_ad"), b("m_my_ads", "my_ads")]]
+    rows += [[b("m_web", "web"), b("m_settings", "settings")], [b("m_help", "help"), b("m_role", "role")]]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_reply_kb(lang: str) -> ReplyKeyboardMarkup:
+    """Pastki (doimiy) tugma — faqat adminlarga: «🛠 Admin panel»."""
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=t("m_admin", lang))]], resize_keyboard=True, is_persistent=True,
+                               input_field_placeholder="AyolQadami")
 
 
 def main_menu(lang: str, role: str | None, is_admin: bool = False) -> ReplyKeyboardMarkup:
@@ -64,6 +87,13 @@ def cancel_kb(lang: str, skip: bool = False, extra: list[str] | None = None) -> 
         rows.append([KeyboardButton(text=t("skip", lang))])
     rows.append([KeyboardButton(text=t("cancel", lang))])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+
+
+def auth_phone_kb(lang: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=t("send_phone", lang), request_contact=True)]],
+        resize_keyboard=True, is_persistent=True,
+    )
 
 
 def phone_kb(lang: str, skip: bool = False) -> ReplyKeyboardMarkup:

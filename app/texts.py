@@ -26,6 +26,30 @@ T: dict[str, dict[str, str]] = {
     },
     "banned": {"uz": "⛔️ Siz botdan foydalanishdan cheklangansiz.", "ru": "⛔️ Вам ограничен доступ к боту."},
 
+    # ---------- telefon orqali ro'yxatdan o'tish / kirish ----------
+    "auth_phone": {
+        "uz": "📱 <b>Ro'yxatdan o'tish yoki kirish</b>\n\nDavom etish uchun pastdagi <b>«📱 Raqamni yuborish»</b> tugmasini bosing.\n\n"
+              "Avval shu raqam bilan ro'yxatdan o'tgan bo'lsangiz — rezyume, arizalar va boshqa ma'lumotlaringiz tiklanadi.",
+        "ru": "📱 <b>Регистрация или вход</b>\n\nЧтобы продолжить, нажмите кнопку <b>«📱 Отправить номер»</b> ниже.\n\n"
+              "Если вы уже регистрировались с этим номером — резюме, отклики и другие данные будут восстановлены.",
+    },
+    "auth_need": {"uz": "📱 Avval telefon raqamingizni yuboring", "ru": "📱 Сначала отправьте номер телефона"},
+    "auth_not_own": {
+        "uz": "⚠️ Faqat <b>o'z</b> raqamingizni pastdagi tugma orqali yuboring.",
+        "ru": "⚠️ Отправьте <b>свой</b> номер кнопкой ниже.",
+    },
+    "auth_bad": {"uz": "⚠️ Raqamni aniqlab bo'lmadi. Qaytadan urinib ko'ring.", "ru": "⚠️ Не удалось распознать номер. Попробуйте ещё раз."},
+    "auth_new": {"uz": "✅ Raqamingiz tasdiqlandi — ro'yxatdan o'tdingiz!", "ru": "✅ Номер подтверждён — вы зарегистрированы!"},
+    "auth_restored": {
+        "uz": "✅ <b>Xush kelibsiz!</b> Raqamingiz tasdiqlandi, avvalgi ma'lumotlaringiz tiklandi:\n{items}",
+        "ru": "✅ <b>С возвращением!</b> Номер подтверждён, ваши данные восстановлены:\n{items}",
+    },
+    "auth_r_resume": {"uz": "📄 Rezyume", "ru": "📄 Резюме"},
+    "auth_r_apps": {"uz": "📨 Arizalar: {n}", "ru": "📨 Отклики: {n}"},
+    "auth_r_vacs": {"uz": "📋 Vakansiyalar: {n}", "ru": "📋 Вакансии: {n}"},
+    "auth_r_favs": {"uz": "⭐ Saqlanganlar: {n}", "ru": "⭐ Избранное: {n}"},
+    "auth_r_profile": {"uz": "👤 Profil sozlamalari", "ru": "👤 Настройки профиля"},
+
     # ---------- menyu ----------
     "m_jobs": {"uz": "🔎 Ish qidirish", "ru": "🔎 Поиск работы"},
     "m_resume": {"uz": "📄 Mening rezyumem", "ru": "📄 Моё резюме"},
@@ -37,6 +61,59 @@ T: dict[str, dict[str, str]] = {
     "m_web": {"uz": "🌐 Sayt", "ru": "🌐 Сайт"},
     "m_settings": {"uz": "⚙️ Sozlamalar", "ru": "⚙️ Настройки"},
     "m_help": {"uz": "✉️ Yordam", "ru": "✉️ Помощь"},
+    "m_post_ad": {"uz": "📢 E'lon berish", "ru": "📢 Подать объявление"},
+    "m_my_ads": {"uz": "🗂 E'lonlarim", "ru": "🗂 Мои объявления"},
+    "m_role": {"uz": "🔄 Rolni almashtirish", "ru": "🔄 Сменить роль"},
+    "menu_pick": {"uz": "👇 Kerakli bo'limni tanlang:", "ru": "👇 Выберите раздел:"},
+    "admin_kb_hint": {"uz": "🛠 Admin panel pastdagi tugmada.", "ru": "🛠 Админ-панель — кнопка внизу."},
+    # ---------- «E'lon berish» ----------
+    "ad_choose": {
+        "uz": "📢 <b>E'lon berish</b>\n\nQanday e'lon bermoqchisiz? Shablonni tanlang — savollarga javob berasiz, e'lon chiroyli ko'rinishda tayyorlanadi.\n\n"
+              "✅ Admin tekshirgach kanal va guruhlarga joylanadi, natijasini shu yerda xabar qilamiz.",
+        "ru": "📢 <b>Подать объявление</b>\n\nКакое объявление хотите подать? Выберите шаблон — ответьте на вопросы, и объявление будет красиво оформлено.\n\n"
+              "✅ После проверки администратором оно появится в каналах и группах — мы сообщим результат здесь.",
+    },
+    "ad_q": {"uz": "<b>{i}/{n}</b> · {emoji} <b>{ask}</b>", "ru": "<b>{i}/{n}</b> · {emoji} <b>{ask}</b>"},
+    "ad_example": {"uz": "Masalan: <i>{ex}</i>", "ru": "Например: <i>{ex}</i>"},
+    "ad_optional": {"uz": "(ixtiyoriy)", "ru": "(необязательно)"},
+    "ad_long_hint": {"uz": "Har bir bandni yangi qatordan yozing.", "ru": "Каждый пункт с новой строки."},
+    "ad_skip": {"uz": "⏭ O'tkazib yuborish", "ru": "⏭ Пропустить"},
+    "ad_back": {"uz": "⬅️ Orqaga", "ru": "⬅️ Назад"},
+    "ad_cancel": {"uz": "✖️ Bekor qilish", "ru": "✖️ Отмена"},
+    "ad_pick_only": {"uz": "👆 Iltimos, tugmalardan birini tanlang.", "ru": "👆 Пожалуйста, выберите вариант кнопкой."},
+    "ad_required": {"uz": "Bu maydon majburiy — javob yozing.", "ru": "Это поле обязательно — напишите ответ."},
+    "ad_too_long": {"uz": "Juda uzun — {n} belgidan oshmasin.", "ru": "Слишком длинно — не больше {n} символов."},
+    "ad_bad_phone": {"uz": "Telefon raqami noto'g'ri. Masalan: +998 90 123 45 67", "ru": "Неверный номер. Например: +998 90 123 45 67"},
+    "ad_bad_tg": {"uz": "Telegram manzil noto'g'ri. Masalan: @username", "ru": "Неверный Telegram. Например: @username"},
+    "ad_bad_age": {"uz": "Yoshni raqam bilan yozing (14–80).", "ru": "Укажите возраст числом (14–80)."},
+    "ad_need_contact": {"uz": "Aloqa uchun telefon yoki Telegram — kamida bittasi kerak.", "ru": "Нужен хотя бы один контакт: телефон или Telegram."},
+    "ad_my_phone": {"uz": "📞 {p}", "ru": "📞 {p}"},
+    "ad_my_tg": {"uz": "✈️ {u}", "ru": "✈️ {u}"},
+    "ad_send_phone": {"uz": "📱 Raqamimni yuborish", "ru": "📱 Отправить мой номер"},
+    "ad_preview": {"uz": "👀 <b>E'loningiz shunday ko'rinadi:</b>", "ru": "👀 <b>Так будет выглядеть объявление:</b>"},
+    "ad_confirm": {"uz": "Hammasi to'g'rimi? «Yuborish» bosilgach e'lon admin tekshiruviga ketadi.", "ru": "Всё верно? После «Отправить» объявление уйдёт на проверку."},
+    "ad_send": {"uz": "✅ Yuborish", "ru": "✅ Отправить"},
+    "ad_restart": {"uz": "✏️ Qaytadan to'ldirish", "ru": "✏️ Заполнить заново"},
+    "ad_sent": {
+        "uz": "✅ <b>E'loningiz #{n} qabul qilindi!</b>\n\nAdmin tekshirgach kanal va guruhlarga joylanadi — natijasini shu yerda xabar qilamiz.",
+        "ru": "✅ <b>Объявление #{n} принято!</b>\n\nПосле проверки администратором оно появится в каналах и группах — мы сообщим здесь.",
+    },
+    "ad_dup": {"uz": "Bu e'lon allaqachon yuborilgan (#{n}) — tekshiruvda.", "ru": "Это объявление уже отправлено (#{n}) — на проверке."},
+    "ad_fix": {"uz": "⚠️ Tuzatish kerak: {msg}", "ru": "⚠️ Нужно исправить: {msg}"},
+    "ad_offline": {
+        "uz": "😔 E'lon xizmati vaqtincha ishlamayapti. Birozdan keyin «Qayta yuborish»ni bosing — javoblaringiz saqlanib turadi.",
+        "ru": "😔 Сервис объявлений временно недоступен. Нажмите «Повторить» чуть позже — ответы сохранены.",
+    },
+    "ad_retry": {"uz": "🔄 Qayta yuborish", "ru": "🔄 Повторить"},
+    "ad_limit": {"uz": "Bugun juda ko'p e'lon berdingiz. Ertaga urinib ko'ring.", "ru": "Сегодня слишком много объявлений. Попробуйте завтра."},
+    "ad_disabled": {"uz": "E'lon berish hozircha sozlanmagan.", "ru": "Подача объявлений пока не настроена."},
+    "ad_my_title": {"uz": "🗂 <b>E'lonlarim</b>", "ru": "🗂 <b>Мои объявления</b>"},
+    "ad_my_empty": {"uz": "Hali e'lon bermagansiz.", "ru": "Вы ещё не подавали объявлений."},
+    "ad_st_pending": {"uz": "⏳ Tekshiruvda", "ru": "⏳ На проверке"},
+    "ad_st_published": {"uz": "✅ Joylangan", "ru": "✅ Опубликовано"},
+    "ad_st_rejected": {"uz": "❌ Rad etilgan", "ru": "❌ Отклонено"},
+    "ad_admin_new": {"uz": "🆕 <b>Yangi e'lon #{n}</b> — {tpl}\n<b>{title}</b>\n👤 {who}{warn}", "ru": "🆕 <b>Новое объявление #{n}</b> — {tpl}\n<b>{title}</b>\n👤 {who}{warn}"},
+    "ad_admin_open": {"uz": "🛠 Admin panelda ko'rish", "ru": "🛠 Открыть в админ-панели"},
     "m_admin": {"uz": "🛠 Admin panel", "ru": "🛠 Админ панель"},
 
     "back": {"uz": "⬅️ Orqaga", "ru": "⬅️ Назад"},

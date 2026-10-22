@@ -56,6 +56,12 @@ class AdminPost(StatesGroup):
     confirm = State()
 
 
+class AdForm(StatesGroup):
+    """«E'lon berish»: shablon maydonlari birma-bir, so'ng ko'rib chiqish."""
+    fill = State()
+    confirm = State()
+
+
 class AdminBroadcast(StatesGroup):
     message = State()
     button = State()

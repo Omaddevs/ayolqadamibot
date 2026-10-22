@@ -7,7 +7,9 @@
   DELETE /api/vacancies/{ext_id}          [kalit] saytdagi vakansiyani yopish
   GET    /api/resumes                     [kalit] faol rezyumelar (shaxsiy ma'lumot)
   POST   /api/resumes                     saytdan rezyume (kalitsiz -> majburiy moderatsiya)
-  GET    /api/stats                       [kalit]
+  GET    /api/stats                       [kalit] — admin panel dashboard'i uchun; "Web sinxron" o'chiq bo'lsa ham ishlaydi
+  GET    /api/buttons                     [kalit] kanal posti tagidagi rangli tugmalar
+  PUT    /api/buttons                     [kalit] {"buttons": [{"text", "url", "style"}], "apply_enabled": bool}
 
 Kalit: `X-Api-Key: <WEB_API_KEY>`. Admin paneldagi "Web sinxron" o'chiq bo'lsa health'dan boshqa hammasi 503 qaytaradi.
 """
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections import defaultdict, deque
 from functools import partial
@@ -67,13 +70,16 @@ async def cors_middleware(request: web.Request, handler):
             resp = _json({"error": "internal"}, 500)
     resp.headers["Access-Control-Allow-Origin"] = cfg.api_cors
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Api-Key"
-    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return resp
 
 
 @web.middleware
 async def sync_gate(request: web.Request, handler):
     db: Database = request.app["db"]
+    # statistika va kanal tugmalari — faqat kalit bilan, ma'lumot almashish emas: sinxron sozlamasidan qat'i nazar ochiq
+    if request.path in ("/api/stats", "/api/buttons") and _has_key(request):
+        return await handler(request)
     if request.path != "/api/health" and request.method != "OPTIONS" and not db.flag("web_sync"):
         return _json({"error": "web sync disabled"}, 503)
     return await handler(request)
@@ -198,8 +204,55 @@ async def post_resume(request: web.Request) -> web.Response:
 
 async def stats(request: web.Request) -> web.Response:
     _need_key(request)
-    s = await request.app["db"].stats()
-    return _json({k: v for k, v in s.items() if not isinstance(v, list)})
+    db = request.app["db"]
+    s = await db.stats()
+    out = {k: v for k, v in s.items() if not isinstance(v, list)}
+    out["top_cats"], out["top_cities"] = s["top_cats"], s["top_cities"]
+    out.update(await db.stats_extra())
+    return _json(out)
+
+
+def _buttons_out(db: Database) -> dict:
+    return {
+        "buttons": flow.load_channel_buttons(db),
+        "apply_text": db.setting("btn_apply_text"),
+        "apply_enabled": db.setting("btn_apply_value").strip().lower() not in {"-", "none", "yo'q", "off"},
+    }
+
+
+async def get_buttons(request: web.Request) -> web.Response:
+    _need_key(request)
+    return _json(_buttons_out(request.app["db"]))
+
+
+async def put_buttons(request: web.Request) -> web.Response:
+    """Kanal posti tagidagi tugmalar — sayt admin panelidan. Keyingi postlarga ta'sir qiladi."""
+    _need_key(request)
+    db: Database = request.app["db"]
+    data = await _body(request)
+    items = data.get("buttons")
+    if not isinstance(items, list) or len(items) > 8:
+        raise web.HTTPBadRequest(reason="buttons: list (max 8) expected")
+    clean = []
+    for b in items:
+        if not isinstance(b, dict) or not str(b.get("text") or "").strip():
+            raise web.HTTPBadRequest(reason="button text required")
+        url, style = str(b.get("url") or "").strip(), str(b.get("style") or "")
+        if style not in flow.BUTTON_STYLES:
+            raise web.HTTPBadRequest(reason=f"bad style: {style}")
+        if url and not (re.match(r"^(https?://|tg://)\S+$", url) or re.match(r"^\{(post|site|bot)\}\S*$", url)):
+            raise web.HTTPBadRequest(reason=f"bad url: {url[:60]}")
+        clean.append({"text": str(b["text"]).strip()[:64], "url": url[:500], "style": style})
+    await db.set_setting("channel_buttons", json.dumps(clean, ensure_ascii=False))
+    if isinstance(data.get("apply_enabled"), bool):
+        off = db.setting("btn_apply_value").strip().lower() in {"-", "none", "yo'q", "off"}
+        if data["apply_enabled"] and off:
+            await db.set_setting("btn_apply_value", "bot")
+        elif not data["apply_enabled"] and not off:
+            await db.set_setting("btn_apply_value", "none")
+    if isinstance(data.get("apply_text"), str) and data["apply_text"].strip():
+        await db.set_setting("btn_apply_text", data["apply_text"].strip()[:64])
+    return _json(_buttons_out(db))
 
 
 def build_app(bot: Bot, db: Database, config: Config) -> web.Application:
@@ -213,6 +266,8 @@ def build_app(bot: Bot, db: Database, config: Config) -> web.Application:
     app.router.add_get("/api/resumes", list_resumes)
     app.router.add_post("/api/resumes", post_resume)
     app.router.add_get("/api/stats", stats)
+    app.router.add_get("/api/buttons", get_buttons)
+    app.router.add_put("/api/buttons", put_buttons)
     return app
 
 

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import re
 
 from aiogram import Bot
@@ -55,8 +57,40 @@ def _target_button(text: str, value: str | None, deep_link: str, phone_cb: str) 
     return InlineKeyboardButton(text=text, callback_data=phone_cb)
 
 
+BUTTON_STYLES = {"", "primary", "danger", "success"}
+_URL_RE = re.compile(r"^(https?://|tg://)\S+$")
+
+
+def load_channel_buttons(db: Database) -> list[dict]:
+    """Saqlangan rangli tugmalar ro'yxati (buzilgan JSON bo'lsa — bo'sh)."""
+    try:
+        items = json.loads(db.setting("channel_buttons") or "[]")
+    except ValueError:
+        return []
+    out = []
+    for b in items if isinstance(items, list) else []:
+        if isinstance(b, dict) and str(b.get("text") or "").strip():
+            style = str(b.get("style") or "")
+            out.append({"text": str(b["text"]).strip()[:64], "url": str(b.get("url") or "").strip()[:500],
+                        "style": style if style in BUTTON_STYLES else ""})
+    return out[:8]
+
+
+def custom_buttons(items: list[dict], me: str) -> list[InlineKeyboardButton]:
+    """{post}/{site}/{bot} o'rniga havola qo'yiladi; havolasi bo'sh yoki noto'g'ri tugma tashlab ketiladi."""
+    site = os.getenv("WEB_URL", "").strip().rstrip("/")
+    links = {"post": f"https://t.me/{me}?start=post", "bot": f"https://t.me/{me}", "site": site}
+    out = []
+    for b in items:
+        url = re.sub(r"\{(\w+)\}", lambda m: links.get(m.group(1), m.group(0)), b["url"])
+        if not _URL_RE.match(url) or "{" in url:
+            continue
+        out.append(InlineKeyboardButton(text=b["text"], url=url, style=b["style"] or None))
+    return out
+
+
 async def channel_kb(bot: Bot, db: Database, v: dict | None = None, resume_id: int | None = None) -> InlineKeyboardMarkup | None:
-    """Kanal posti tagidagi tugmalar: "Ishlamoqchiman" va "E'lon berish" (qiymatlari admin paneldan)."""
+    """Kanal posti tagidagi tugmalar: "Ishlamoqchiman" + rangli tugmalar (sayt admin panelidan) yoki eski "E'lon berish"."""
     me = await bot_username(bot)
     rows = []
     if v is not None:
@@ -67,6 +101,10 @@ async def channel_kb(bot: Bot, db: Database, v: dict | None = None, resume_id: i
             rows.append([btn])
     if resume_id is not None:
         rows.append([InlineKeyboardButton(text="📄 Rezyume (PDF / Word)", url=f"https://t.me/{me}?start=res_{resume_id}")])
+    custom = load_channel_buttons(db)
+    if custom:
+        rows.extend([b] for b in custom_buttons(custom, me))
+        return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
     post_value = v.get("post_value") if v is not None and v.get("post_value") is not None else db.setting("btn_post_value")
     btn = _target_button(db.setting("btn_post_text"), post_value, f"https://t.me/{me}?start=post", Phone(kind="post", id=v["id"] if v else 0).pack())
     if btn:

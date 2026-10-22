@@ -7,6 +7,17 @@ from typing import Optional
 from aiogram.filters.callback_data import CallbackData
 
 
+class MenuCb(CallbackData, prefix="mn"):
+    """Asosiy menyu (inline). a — bo'lim."""
+    a: str
+
+
+class AdCb(CallbackData, prefix="ad"):
+    """«E'lon berish»: a — amal (tpl|opt|quick|skip|back|cancel|send|edit|my), v — qiymat/indeks."""
+    a: str
+    v: Optional[str] = None
+
+
 class LangCb(CallbackData, prefix="lang"):
     code: str
 

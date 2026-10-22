@@ -14,8 +14,8 @@ from aiogram.types import BotCommand, BotCommandScopeDefault
 
 from .config import BASE_DIR, Config, get_config
 from .db import Database
-from .handlers import admin, browse, cabinet, fallback, menu, resume, start, vacancy
-from .middlewares import SubscriptionMiddleware, UserMiddleware
+from .handlers import admin, ads, browse, cabinet, fallback, menu, resume, start, vacancy
+from .middlewares import PhoneMiddleware, SubscriptionMiddleware, UserMiddleware
 from .services import flow, websync
 
 log = logging.getLogger("ayolqadam")
@@ -47,9 +47,10 @@ def build_dispatcher(cfg: Config, db: Database) -> Dispatcher:
     dp = Dispatcher(storage=make_storage(cfg), db=db, config=cfg)
     for observer in (dp.message, dp.callback_query):
         observer.outer_middleware(UserMiddleware())
+        observer.outer_middleware(PhoneMiddleware())  # til → raqam → obuna → rol
         observer.outer_middleware(SubscriptionMiddleware())
     # tartib muhim: /start va menyu tugmalari har qanday holatda ishlashi kerak
-    dp.include_routers(start.router, menu.router, admin.router, resume.router, vacancy.router, cabinet.router, browse.router, fallback.router)
+    dp.include_routers(start.router, menu.router, admin.router, ads.router, resume.router, vacancy.router, cabinet.router, browse.router, fallback.router)
     return dp
 
 
