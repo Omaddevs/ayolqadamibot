@@ -123,7 +123,7 @@ DEFAULT_SETTINGS = {
     # Bo'sh ro'yxat "[]" bo'lsa — eski yagona «E'lon berish» tugmasi (btn_post_*) ishlaydi.
     "channel_buttons": json.dumps([
         {"text": "📢 E'lon joylash / Разместить вакансию", "url": "{post}", "style": "primary"},
-        {"text": "🗂 Kanallar to'plami / Подборка каналов", "url": "", "style": "danger"},
+        {"text": "📂 Ish kanallari / Каналы с вакансиями", "url": "", "style": "danger"},  # havola: t.me/addlist/... (sayt admin paneli → Kanal tugmalari)
         {"text": "💼 Website AyolQadami", "url": "{site}", "style": "success"},
     ], ensure_ascii=False),
 }
