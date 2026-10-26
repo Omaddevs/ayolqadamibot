@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS vacancies (
     contact_phone TEXT, contact_tg TEXT,
     media_type TEXT, media_file_id TEXT,
     raw_chat_id INTEGER, raw_message_id INTEGER, body_html TEXT,
+    ad_kind TEXT NOT NULL DEFAULT 'vacancy',
     apply_value TEXT, post_value TEXT,
     extra_buttons TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'pending',
@@ -158,7 +159,7 @@ RESUME_FIELDS = {
 VACANCY_FIELDS = {
     "user_id", "source", "ext_id", "title", "company", "category", "city", "job_type", "salary_from", "salary_to",
     "exp_level", "description", "requirements", "conditions", "contact_phone", "contact_tg", "media_type",
-    "media_file_id", "raw_chat_id", "raw_message_id", "body_html", "apply_value", "post_value", "status", "channel_posts", "expires_at",
+    "media_file_id", "raw_chat_id", "raw_message_id", "body_html", "ad_kind", "apply_value", "post_value", "status", "channel_posts", "expires_at",
     "extra_buttons",
 }
 
@@ -201,6 +202,9 @@ class Database:
         # admin e'loni matni (HTML) — media izohi 1024 belgidan uzun bo'lsa alohida xabar qilib yuboriladi
         if "body_html" not in vcols:
             await self.conn.execute("ALTER TABLE vacancies ADD COLUMN body_html TEXT")
+        # admin e'loni turi: vacancy — ish beruvchi (vakansiya), seeker — ish izlovchi (kanal tugmalari boshqacha)
+        if "ad_kind" not in vcols:
+            await self.conn.execute("ALTER TABLE vacancies ADD COLUMN ad_kind TEXT NOT NULL DEFAULT 'vacancy'")
 
     async def close(self) -> None:
         if self.conn:

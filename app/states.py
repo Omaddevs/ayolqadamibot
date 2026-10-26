@@ -46,6 +46,7 @@ class Support(StatesGroup):
 
 
 class AdminPost(StatesGroup):
+    kind = State()  # e'lon turi: ish beruvchi (vakansiya) yoki ish izlovchi
     message = State()
     cat = State()
     city = State()

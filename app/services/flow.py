@@ -76,12 +76,22 @@ EXTRA_SLOTS = {
     "admin": ("🛠 Admin URL / @username", "👩‍💼 Admin bilan bog'lanish"),
     "site": ("🌐 Website URL", "🌐 Batafsil"),
 }
+# Ish izlovchi e'loni: tugmalar nomzodga murojaat qilish uchun («Ishlamoqchiman» bo'lmaydi)
+SEEKER_SLOTS = {
+    **EXTRA_SLOTS,
+    "phone": ("📞 Nomzod raqami", "📞 {v}"),
+    "client": ("👤 Nomzod URL / @username", "🤝 Ishga taklif qilish"),
+}
+
+
+def extra_slots(v: dict) -> dict:
+    return SEEKER_SLOTS if v.get("ad_kind") == "seeker" else EXTRA_SLOTS
 
 
 def extra_rows(v: dict) -> list[list[InlineKeyboardButton]]:
-    rows = []
+    rows, slots = [], extra_slots(v)
     for b in v.get("extra_buttons") or []:
-        slot, val = EXTRA_SLOTS.get(b.get("k")), b.get("v")
+        slot, val = slots.get(b.get("k")), b.get("v")
         if not slot or not val:
             continue
         if b["k"] == "phone":  # bosilsa qo'ng'iroq (/call sahifasi orqali); SERVER_URL bo'lmasa — raqam oynada ko'rinadi
@@ -135,7 +145,9 @@ async def channel_kb(bot: Bot, db: Database, v: dict | None = None, resume_id: i
     """Kanal posti tagidagi tugmalar: "Ishlamoqchiman" + rangli tugmalar (sayt admin panelidan) yoki eski "E'lon berish"."""
     me = await bot_username(bot)
     rows = []
-    if v is not None:
+    if v is not None and v.get("ad_kind") == "seeker":
+        rows.extend(extra_rows(v))
+    elif v is not None:
         value = v.get("apply_value") if v.get("apply_value") is not None else db.setting("btn_apply_value")
         btn = _target_button(db.setting("btn_apply_text"), value, f"https://t.me/{me}?start=apply_{v['id']}",
                              Phone(kind="apply", id=v["id"]).pack())

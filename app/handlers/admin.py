@@ -740,14 +740,47 @@ async def _run_broadcast(bot: Bot, db: Database, admin_id: int, data: dict) -> N
 
 
 # ---------- admin e'lon joylash ----------
+# E'lon turi: kim nomidan — kanaldagi tugmalar shunga qarab tanlanadi
+AD_KINDS = {
+    "vacancy": ("💼 Ish beruvchi (vakansiya)", "kanal, bot va saytga joylanadi; tugmalar: «Ishlamoqchiman», «Murojaat qilish»."),
+    "seeker": ("🙋‍♀️ Ish izlovchi (ish qidiryapman)", "faqat kanallarga joylanadi; tugmalar: «Ishga taklif qilish», nomzod raqami."),
+}
+
+
 @router.callback_query(Adm.filter(F.a == "post"))
-async def admin_post(cb: CallbackQuery, state: FSMContext, db: Database) -> None:
-    channels = await db.channels("post")
-    warn = "" if channels else "\n\n⚠️ E'lon kanali qo'shilmagan — e'lon faqat botga va saytga joylanadi."
-    await state.set_state(AdminPost.message)
+async def admin_post(cb: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(AdminPost.kind)
     await cb.answer()
+    rows = [[InlineKeyboardButton(text=label, callback_data=Pick(f="akind", v=k).pack())] for k, (label, _) in AD_KINDS.items()]
+    rows.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data=Pick(f="akind", v="cancel").pack())])
     await cb.message.answer(
-        "📢 <b>E'lon joylash</b>\n\nKanal, bot va saytga joylanadigan e'lonni yuboring: matn, rasm, video yoki fayl. "
+        "📢 <b>E'lon joylash</b>\n\nKim nomidan e'lon beriladi?\n\n" + "\n".join(f"<b>{label}</b> — {about}" for label, about in AD_KINDS.values()),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@router.callback_query(AdminPost.kind, Pick.filter(F.f == "akind"))
+async def admin_post_kind(cb: CallbackQuery, callback_data: Pick, state: FSMContext, db: Database,
+                          user: dict, lang: str, is_admin: bool) -> None:
+    await cb.answer()
+    await cb.message.edit_reply_markup(reply_markup=None)
+    if callback_data.v not in AD_KINDS:
+        await state.set_state(None)
+        return await send_menu(cb.message, user, lang, is_admin, "Bekor qilindi.")
+    channels = await db.channels("post")
+    if callback_data.v == "seeker":
+        if not channels:
+            await state.set_state(None)
+            return await send_menu(cb.message, user, lang, is_admin,
+                                   "⚠️ E'lon kanali qo'shilmagan. Ish izlovchi e'loni faqat kanalga joylanadi — avval «E'lon kanallari»dan kanal qo'shing.")
+        where, warn = "Kanallarga", ""
+    else:
+        where = "Kanal, bot va saytga"
+        warn = "" if channels else "\n\n⚠️ E'lon kanali qo'shilmagan — e'lon faqat botga va saytga joylanadi."
+    await state.update_data(ap_kind=callback_data.v)
+    await state.set_state(AdminPost.message)
+    await cb.message.answer(
+        f"<b>{AD_KINDS[callback_data.v][0]}</b>\n\n{where} joylanadigan e'lonni yuboring: matn, rasm, video yoki fayl. "
         "Boshqa kanaldan <b>forward</b> qilsangiz ham bo'ladi — kanalga bot nomidan, tugmalar bilan chiqadi." + warn,
         reply_markup=cancel_kb("uz"),
     )
@@ -755,6 +788,7 @@ async def admin_post(cb: CallbackQuery, state: FSMContext, db: Database) -> None
 
 @router.message(AdminPost.message)
 async def admin_post_message(message: Message, state: FSMContext) -> None:
+    kind = (await state.get_data()).get("ap_kind") or "vacancy"
     media_type = media_id = None
     if message.photo:
         media_type, media_id = "photo", message.photo[-1].file_id
@@ -769,6 +803,7 @@ async def admin_post_message(message: Message, state: FSMContext) -> None:
         await message.answer("⚠️ Bu turdagi xabarni e'lon sifatida joylab bo'lmaydi. Matn yoki media yuboring.")
         return
     await state.update_data(ap={
+        "ad_kind": kind,
         "raw_chat_id": message.chat.id, "raw_message_id": message.message_id, "description": text,
         "body_html": message.html_text if text else None,  # izoh 1024 dan uzun bo'lsa — alohida xabar (flow.copy_post)
         "media_type": media_type, "media_file_id": media_id,
@@ -793,7 +828,7 @@ async def admin_post_cat(cb: CallbackQuery, callback_data: Pick, state: FSMConte
 async def admin_post_city(cb: CallbackQuery, callback_data: Pick, state: FSMContext, db: Database) -> None:
     data = await state.get_data()
     data["ap"]["city"] = None if callback_data.v == "-" else callback_data.v
-    data["ap"].setdefault("apply_value", "bot")
+    data["ap"].setdefault("apply_value", "-" if data["ap"].get("ad_kind") == "seeker" else "bot")
     data["ap"].setdefault("extra_buttons", [])
     await state.update_data(ap=data["ap"])
     await state.set_state(AdminPost.buttons)
@@ -809,6 +844,12 @@ SLOT_ASK = {
     "admin": "🛠 <b>Admin havolasini</b> yuboring — savollar uchun.\nMasalan: <code>@ayolqadam_admin</code>",
     "site": "🌐 <b>Sayt havolasini</b> yuboring — batafsil ma'lumot sahifasi.\nMasalan: <code>https://ayolqadami.uz/jobs</code>",
 }
+SEEKER_SLOT_ASK = {
+    **SLOT_ASK,
+    "phone": "📞 <b>Nomzod raqamini</b> yuboring.\nMasalan: <code>+998 90 123 45 67</code>\n\nIsh beruvchi tugmani bosganda nomzodga qo'ng'iroq ketadi.",
+    "client": "👤 <b>Nomzod havolasini</b> yuboring — ish beruvchilar «🤝 Ishga taklif qilish» tugmasi orqali unga yozadi.\n"
+              "Masalan: <code>@username</code> yoki <code>https://t.me/username</code>",
+}
 
 
 def _slot_value(ap: dict, k: str) -> str | None:
@@ -820,15 +861,21 @@ def _pb(text: str, v: str) -> InlineKeyboardButton:
 
 
 def _buttons_view(db: Database, ap: dict) -> tuple[str, InlineKeyboardMarkup]:
-    apply_on = ap.get("apply_value") != "-"
+    seeker = ap.get("ad_kind") == "seeker"
     lines = [
-        "🔘 <b>Post tugmalari</b>",
+        "🔘 <b>Post tugmalari</b>" + (" — 🙋‍♀️ ish izlovchi e'loni" if seeker else ""),
         "Kerakli tugmani bosib qo'shing — <b>hammasi ixtiyoriy</b>. Tayyor bo'lgach «Ko'rib chiqish va joylash»ni bosing.",
         "",
-        f"🤖 Botda ariza («{h(db.setting('btn_apply_text'))}»): {'✅ bor' if apply_on else '—'}",
     ]
-    rows = [[_pb(f"🤖 Botda ariza: {'✅ yoqilgan' if apply_on else '⛔ o‘chirilgan'}", "apply")]]
-    for k, (label, _) in flow.EXTRA_SLOTS.items():
+    rows = []
+    if seeker:
+        # botdagi ariza — vakansiya uchun; ish izlovchiga ish beruvchi to'g'ridan-to'g'ri murojaat qiladi
+        lines.append("ℹ️ Ish beruvchilar nomzodga murojaat qilishi uchun <b>nomzod havolasi</b> yoki <b>raqamini</b> qo'shing.")
+    else:
+        apply_on = ap.get("apply_value") != "-"
+        lines.append(f"🤖 Botda ariza («{h(db.setting('btn_apply_text'))}»): {'✅ bor' if apply_on else '—'}")
+        rows.append([_pb(f"🤖 Botda ariza: {'✅ yoqilgan' if apply_on else '⛔ o‘chirilgan'}", "apply")])
+    for k, (label, _) in flow.extra_slots(ap).items():
         val = _slot_value(ap, k)
         lines.append(f"{label}: {h(val) if val else '—'}")
         if val:
@@ -858,8 +905,9 @@ async def admin_post_buttons(cb: CallbackQuery, callback_data: Pick, state: FSMC
         await state.update_data(ap_slot=k)
         await state.set_state(AdminPost.btn_input)
         kb = InlineKeyboardMarkup(inline_keyboard=[[_pb("⬅️ Orqaga", "back")]])
-        return await cb.message.edit_text(SLOT_ASK[k], reply_markup=kb, disable_web_page_preview=True)
-    if action == "apply":
+        asks = SEEKER_SLOT_ASK if ap.get("ad_kind") == "seeker" else SLOT_ASK
+        return await cb.message.edit_text(asks[k], reply_markup=kb, disable_web_page_preview=True)
+    if action == "apply" and ap.get("ad_kind") != "seeker":
         ap["apply_value"] = "bot" if ap.get("apply_value") == "-" else "-"
     elif action == "del":
         ap["extra_buttons"] = [b for b in ap.get("extra_buttons") or [] if b.get("k") != k]
@@ -895,6 +943,7 @@ async def _post_preview(message: Message, state: FSMContext, db: Database) -> No
     await state.set_state(AdminPost.confirm)
     kb = await flow.channel_kb(message.bot, db, {
         "id": 0, "apply_value": ap.get("apply_value"), "post_value": None, "extra_buttons": ap.get("extra_buttons") or [],
+        "ad_kind": ap.get("ad_kind") or "vacancy",
     })
     await message.answer("👁 <b>Kanalda shunday ko'rinadi:</b>")
     try:
@@ -915,7 +964,9 @@ async def _post_preview(message: Message, state: FSMContext, db: Database) -> No
         [InlineKeyboardButton(text="✏️ Tugmalarni o'zgartirish", callback_data=Pick(f="aok", v="edit").pack()),
          InlineKeyboardButton(text="❌ Bekor", callback_data=Pick(f="aok", v="0").pack())],
     ])
-    await message.answer(f"📡 Kanallar: {where}\n🤖 Bot va 🌐 sayt: ha" + (f"\n🏷 {h(' · '.join(extra))}" if extra else "") + "\n\nJoylaymizmi?", reply_markup=kb2)
+    seeker = ap.get("ad_kind") == "seeker"
+    kind = "🙋‍♀️ Ish izlovchi" if seeker else "💼 Ish beruvchi (vakansiya)"
+    await message.answer(f"🏷 Turi: {kind}\n📡 Kanallar: {where}\n🤖 Bot va 🌐 sayt: {'yo‘q (faqat kanal)' if seeker else 'ha'}" + (f"\n🏷 {h(' · '.join(extra))}" if extra else "") + "\n\nJoylaymizmi?", reply_markup=kb2)
 
 
 @router.callback_query(AdminPost.confirm, Pick.filter(F.f == "aok"))
@@ -933,12 +984,15 @@ async def admin_post_confirm(cb: CallbackQuery, callback_data: Pick, state: FSMC
         await send_menu(cb.message, user, lang, is_admin, "Bekor qilindi.")
         return
     ap = data["ap"]
+    seeker = ap.get("ad_kind") == "seeker"
+    # ish izlovchi e'loni faqat kanalda: "channel" holati bot qidiruvi, sayt va statistikaga kirmaydi
     v = await db.create_vacancy({
-        **ap, "user_id": None, "source": "admin", "status": "pending",
+        **ap, "user_id": None, "source": "admin", "status": "channel" if seeker else "pending",
         "title": first_line_title(ap.get("description") or "") if ap.get("description") else "E'lon",
     }, config.vacancy_days)
     posts = await flow.publish_vacancy(bot, db, v)
-    await flow.activate_vacancy(bot, db, config, await db.get_vacancy(v["id"]))
+    if not seeker:
+        await flow.activate_vacancy(bot, db, config, await db.get_vacancy(v["id"]))
     channels = {c["chat_id"]: c for c in await db.channels("post")}
     links = []
     for chat_id, msg_id in posts:
