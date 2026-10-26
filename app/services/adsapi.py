@@ -84,3 +84,11 @@ async def submit(cfg: Config, template: str, fields: dict, user: dict) -> dict:
 async def my_ads(cfg: Config, tg_user_id: int) -> list[dict]:
     data = await _request(cfg, "GET", "/bot/ads", params={"tgUserId": str(tg_user_id)})
     return data.get("items") or []
+
+
+async def upload_image(cfg: Config, data: bytes) -> str:
+    """Rasmni serverga yuklaydi va ochiq havolasini qaytaradi (kanal postida havola ko'rinishi sifatida ko'rsatiladi)."""
+    url = (await _request(cfg, "POST", "/bot/media", data=data)).get("url") or ""
+    if not url.startswith("https://"):
+        raise AdsUnavailable(f"Rasm havolasi noto'g'ri: {url!r}")
+    return url

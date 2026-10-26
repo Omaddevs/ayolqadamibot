@@ -9,15 +9,15 @@ import re
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 
 from ..callbacks import Act, Mod, Phone
-from ..config import Config
+from ..config import Config, get_config
 from ..constants import cat_name
 from ..db import Database
 from ..texts import t
 from ..utils import CAPTION_LIMIT, classify_target, h, resume_card, vacancy_card
-from . import notify, websync
+from . import adsapi, files, notify, websync
 
 log = logging.getLogger(__name__)
 _tasks: set[asyncio.Task] = set()
@@ -171,18 +171,45 @@ async def channel_kb(bot: Bot, db: Database, v: dict | None = None, resume_id: i
 MEDIA_SENDERS = {"photo": "send_photo", "video": "send_video", "animation": "send_animation", "document": "send_document"}
 
 
+_preview_urls: dict[str, str] = {}  # rasm file_id -> serverdagi ochiq havola (bir e'lon bir necha kanalga — bir marta yuklanadi)
+
+
+async def _preview_url(bot: Bot, file_id: str) -> str | None:
+    if file_id in _preview_urls:
+        return _preview_urls[file_id]
+    data = await files.photo_bytes(bot, file_id)
+    if not data:
+        return None
+    try:
+        url = await adsapi.upload_image(get_config(), data)
+    except (adsapi.AdsUnavailable, adsapi.AdsRejected) as e:
+        log.warning("Rasmni serverga yuklab bo'lmadi: %s", e)
+        return None
+    if len(_preview_urls) > 200:
+        _preview_urls.clear()
+    _preview_urls[file_id] = url
+    return url
+
+
 async def copy_post(bot: Bot, chat_id: int, v: dict, kb: InlineKeyboardMarkup | None) -> list[int]:
     """Admin e'lonining nusxasi. Premium foydalanuvchi media izohiga 4096 belgigacha yoza oladi, bot esa faqat 1024 —
-    bunday izohni Telegram rad etadi ("message caption is too long"). Unda media izohsiz, matn esa ostida alohida
-    xabar (tugmalar bilan) qilib yuboriladi. Qaytaradi: xabar id'lari, birinchisi — tugmali xabar."""
+    bunday izohni Telegram rad etadi ("message caption is too long"). Unda:
+    • rasm — serverga yuklanadi va matn bilan BITTA xabar bo'ladi: rasm tepada (havola ko'rinishi), matn ostida, tugmalar pastda;
+    • video/fayl yoki server ishlamasa — media izohsiz, matn esa ostida alohida xabar (tugmalar bilan).
+    Qaytaradi: xabar id'lari, birinchisi — tugmali xabar."""
     try:
         msg = await bot.copy_message(chat_id, v["raw_chat_id"], v["raw_message_id"], reply_markup=kb)
         return [msg.message_id]
     except TelegramBadRequest as e:
         if "caption is too long" not in e.message.lower() or v.get("media_type") not in MEDIA_SENDERS:
             raise
-    media = await getattr(bot, MEDIA_SENDERS[v["media_type"]])(chat_id, v["media_file_id"])
     text = v.get("body_html") or h(v.get("description"))
+    url = await _preview_url(bot, v["media_file_id"]) if v.get("media_type") == "photo" else None
+    if url:
+        preview = LinkPreviewOptions(url=url, prefer_large_media=True, show_above_text=True)
+        msg = await bot.send_message(chat_id, text, reply_markup=kb, link_preview_options=preview)
+        return [msg.message_id]
+    media = await getattr(bot, MEDIA_SENDERS[v["media_type"]])(chat_id, v["media_file_id"])
     msg = await bot.send_message(chat_id, text, reply_markup=kb, disable_web_page_preview=True)
     return [msg.message_id, media.message_id]
 
