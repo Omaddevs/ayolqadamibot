@@ -8,6 +8,7 @@ import os
 import re
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..callbacks import Act, Mod, Phone
@@ -15,7 +16,7 @@ from ..config import Config
 from ..constants import cat_name
 from ..db import Database
 from ..texts import t
-from ..utils import CAPTION_LIMIT, classify_target, resume_card, vacancy_card
+from ..utils import CAPTION_LIMIT, classify_target, h, resume_card, vacancy_card
 from . import notify, websync
 
 log = logging.getLogger(__name__)
@@ -46,6 +47,14 @@ async def channel_footer(bot: Bot, v: dict) -> str:
     return " ".join(tags) + f"\n\n🤖 @{await bot_username(bot)}"
 
 
+def call_url(phone: str) -> str:
+    """Telegram tugmasi tel: qabul qilmaydi — serverdagi /call/<raqam> sahifasi telefon terish oynasini ochadi.
+    SERVER_URL bo'lmasa — bo'sh (tugma eski usulda raqamni oynada ko'rsatadi)."""
+    server = os.getenv("SERVER_URL", "").strip().rstrip("/")
+    digits = re.sub(r"\D", "", phone or "")
+    return f"{server}/call/{digits}" if server and digits else ""
+
+
 def _target_button(text: str, value: str | None, deep_link: str, phone_cb: str) -> InlineKeyboardButton | None:
     kind, val = classify_target(value)
     if kind == "none":
@@ -54,7 +63,8 @@ def _target_button(text: str, value: str | None, deep_link: str, phone_cb: str) 
         return InlineKeyboardButton(text=text, url=deep_link)
     if kind == "url":
         return InlineKeyboardButton(text=text, url=val)
-    return InlineKeyboardButton(text=text, callback_data=phone_cb)
+    url = call_url(val)
+    return InlineKeyboardButton(text=text, url=url) if url else InlineKeyboardButton(text=text, callback_data=phone_cb)
 
 
 BUTTON_STYLES = {"", "primary", "danger", "success"}
@@ -74,8 +84,10 @@ def extra_rows(v: dict) -> list[list[InlineKeyboardButton]]:
         slot, val = EXTRA_SLOTS.get(b.get("k")), b.get("v")
         if not slot or not val:
             continue
-        if b["k"] == "phone":  # Telegram tugmasi qo'ng'iroq qila olmaydi — bosilganda raqam oynada ko'rinadi
-            rows.append([InlineKeyboardButton(text=slot[1].format(v=val), callback_data=Phone(kind="contact", id=v.get("id") or 0).pack())])
+        if b["k"] == "phone":  # bosilsa qo'ng'iroq (/call sahifasi orqali); SERVER_URL bo'lmasa — raqam oynada ko'rinadi
+            text, url = slot[1].format(v=val), call_url(val)
+            rows.append([InlineKeyboardButton(text=text, url=url) if url
+                         else InlineKeyboardButton(text=text, callback_data=Phone(kind="contact", id=v.get("id") or 0).pack())])
             continue
         kind, url = classify_target(val)
         if kind == "url":
@@ -144,6 +156,25 @@ async def channel_kb(bot: Bot, db: Database, v: dict | None = None, resume_id: i
 
 
 # ---------- kanal ----------
+MEDIA_SENDERS = {"photo": "send_photo", "video": "send_video", "animation": "send_animation", "document": "send_document"}
+
+
+async def copy_post(bot: Bot, chat_id: int, v: dict, kb: InlineKeyboardMarkup | None) -> list[int]:
+    """Admin e'lonining nusxasi. Premium foydalanuvchi media izohiga 4096 belgigacha yoza oladi, bot esa faqat 1024 —
+    bunday izohni Telegram rad etadi ("message caption is too long"). Unda media izohsiz, matn esa ostida alohida
+    xabar (tugmalar bilan) qilib yuboriladi. Qaytaradi: xabar id'lari, birinchisi — tugmali xabar."""
+    try:
+        msg = await bot.copy_message(chat_id, v["raw_chat_id"], v["raw_message_id"], reply_markup=kb)
+        return [msg.message_id]
+    except TelegramBadRequest as e:
+        if "caption is too long" not in e.message.lower() or v.get("media_type") not in MEDIA_SENDERS:
+            raise
+    media = await getattr(bot, MEDIA_SENDERS[v["media_type"]])(chat_id, v["media_file_id"])
+    text = v.get("body_html") or h(v.get("description"))
+    msg = await bot.send_message(chat_id, text, reply_markup=kb, disable_web_page_preview=True)
+    return [msg.message_id, media.message_id]
+
+
 async def publish_vacancy(bot: Bot, db: Database, v: dict) -> list[list[int]]:
     channels = await db.channels("post")
     if not channels:
@@ -154,8 +185,7 @@ async def publish_vacancy(bot: Bot, db: Database, v: dict) -> list[list[int]]:
     for ch in channels:
         try:
             if v.get("source") == "admin" and v.get("raw_chat_id"):
-                msg = await bot.copy_message(ch["chat_id"], v["raw_chat_id"], v["raw_message_id"], reply_markup=kb)
-                posts.append([ch["chat_id"], msg.message_id])
+                posts.extend([ch["chat_id"], mid] for mid in await copy_post(bot, ch["chat_id"], v, kb))
                 continue
             if v.get("media_type") == "photo" and v.get("media_file_id"):
                 msg = await bot.send_photo(ch["chat_id"], v["media_file_id"], caption=vacancy_card(v, "uz", CAPTION_LIMIT, footer), reply_markup=kb)

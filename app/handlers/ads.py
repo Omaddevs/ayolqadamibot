@@ -15,6 +15,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from ..callbacks import AdCb
 from ..config import Config
+from ..constants import CITIES, city_label
 from ..db import Database
 from ..services import adsapi, notify
 from ..states import AdForm
@@ -42,7 +43,9 @@ def _options(field: dict, data: dict) -> list[dict]:
     if field["type"] == "category":
         return data.get("categories") or []
     if field["type"] == "city":
-        return [{"v": c, "uz": c, "ru": c} for c in data.get("cities") or []]
+        # serverdagi ro'yxatda yo'q viloyatlar (masalan, "Toshkent viloyati") ham chiqsin
+        cities = list(dict.fromkeys([*CITIES, *(data.get("cities") or [])]))
+        return [{"v": c, "uz": city_label(c), "ru": city_label(c)} for c in cities]
     return []
 
 

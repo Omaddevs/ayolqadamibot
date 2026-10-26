@@ -770,6 +770,7 @@ async def admin_post_message(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(ap={
         "raw_chat_id": message.chat.id, "raw_message_id": message.message_id, "description": text,
+        "body_html": message.html_text if text else None,  # izoh 1024 dan uzun bo'lsa — alohida xabar (flow.copy_post)
         "media_type": media_type, "media_file_id": media_id,
     })
     if message.media_group_id:
@@ -803,7 +804,7 @@ async def admin_post_city(cb: CallbackQuery, callback_data: Pick, state: FSMCont
 
 # ---------- post tugmalari: bosib qo'shish (hammasi ixtiyoriy) ----------
 SLOT_ASK = {
-    "phone": "📞 <b>Mijoz raqamini</b> yuboring.\nMasalan: <code>+998 90 123 45 67</code>\n\nKanalda tugma bosilganda raqam ko'rinadi.",
+    "phone": "📞 <b>Mijoz raqamini</b> yuboring.\nMasalan: <code>+998 90 123 45 67</code>\n\nKanalda tugma bosilganda qo'ng'iroq ketadi.",
     "client": "👤 <b>Mijoz havolasini</b> yuboring — nomzodlar unga yozadi.\nMasalan: <code>@hr_manager</code> yoki <code>https://t.me/hr_manager</code>",
     "admin": "🛠 <b>Admin havolasini</b> yuboring — savollar uchun.\nMasalan: <code>@ayolqadam_admin</code>",
     "site": "🌐 <b>Sayt havolasini</b> yuboring — batafsil ma'lumot sahifasi.\nMasalan: <code>https://ayolqadami.uz/jobs</code>",
@@ -897,7 +898,7 @@ async def _post_preview(message: Message, state: FSMContext, db: Database) -> No
     })
     await message.answer("👁 <b>Kanalda shunday ko'rinadi:</b>")
     try:
-        await message.bot.copy_message(message.chat.id, ap["raw_chat_id"], ap["raw_message_id"], reply_markup=kb)
+        await flow.copy_post(message.bot, message.chat.id, ap, kb)
     except TelegramBadRequest as e:
         await message.answer(f"⚠️ Xabarni nusxalab bo'lmadi: {h(e.message)}")
         await state.set_state(None)
@@ -941,7 +942,9 @@ async def admin_post_confirm(cb: CallbackQuery, callback_data: Pick, state: FSMC
     channels = {c["chat_id"]: c for c in await db.channels("post")}
     links = []
     for chat_id, msg_id in posts:
-        ch = channels.get(chat_id) or {}
+        if chat_id not in channels:
+            continue  # shu kanalning ikkinchi xabari (izohsiz media) — havola bitta
+        ch = channels.pop(chat_id)
         link = ch.get("link") or ""
         url = f"{link}/{msg_id}" if link.startswith("https://t.me/") and "+" not in link and "joinchat" not in link else f"https://t.me/c/{str(chat_id).removeprefix('-100')}/{msg_id}"
         links.append(f"• <a href=\"{url}\">{h(ch.get('title') or chat_id)}</a>")

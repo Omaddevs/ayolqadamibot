@@ -25,10 +25,20 @@ CATEGORIES = [
     ("other", "Boshqa", "Другое"),
 ]
 
+# Qiymat — viloyat markazi (web'dagi CITIES bilan bir xil), "Toshkent viloyati" — alohida
 CITIES = [
-    "Toshkent", "Samarqand", "Buxoro", "Andijon", "Farg'ona", "Namangan", "Navoiy",
-    "Qarshi", "Nukus", "Urganch", "Jizzax", "Guliston", "Termiz",
+    "Toshkent", "Toshkent viloyati", "Andijon", "Buxoro", "Farg'ona", "Jizzax", "Urganch", "Namangan", "Navoiy",
+    "Qarshi", "Nukus", "Samarqand", "Guliston", "Termiz",
 ]
+# Tugmalarda viloyat nomi ko'rinadi — "Qarshi" emas, "Qashqadaryo" deb qidiriladi
+CITY_LABELS = {
+    "Toshkent": "Toshkent shahri", "Urganch": "Xorazm (Urganch)", "Qarshi": "Qashqadaryo (Qarshi)",
+    "Nukus": "Qoraqalpog'iston (Nukus)", "Guliston": "Sirdaryo (Guliston)", "Termiz": "Surxondaryo (Termiz)",
+}
+
+
+def city_label(city: str) -> str:
+    return CITY_LABELS.get(city, city)
 
 # id, uz, ru — `web` maydoni saytdagi JOB_TYPES yozuvi
 JOB_TYPES = [

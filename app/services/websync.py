@@ -26,11 +26,11 @@ _session: aiohttp.ClientSession | None = None
 
 # web'dagi viloyat id → markaz shahar (src/data/resume.js REGIONS)
 REGION_CITY = {
-    "tashkent-city": "Toshkent", "tashkent": "Toshkent", "andijan": "Andijon", "bukhara": "Buxoro", "fergana": "Farg'ona",
+    "tashkent-city": "Toshkent", "tashkent": "Toshkent viloyati", "andijan": "Andijon", "bukhara": "Buxoro", "fergana": "Farg'ona",
     "jizzakh": "Jizzax", "khorezm": "Urganch", "namangan": "Namangan", "navoi": "Navoiy", "kashkadarya": "Qarshi",
     "karakalpak": "Nukus", "samarkand": "Samarqand", "syrdarya": "Guliston", "surkhandarya": "Termiz",
 }
-CITY_REGION = {"Toshkent": "tashkent-city", **{v: k for k, v in REGION_CITY.items() if k not in ("tashkent-city", "tashkent")}}
+CITY_REGION = {v: k for k, v in REGION_CITY.items()}
 WEB_EXP = {"0": "none", "1": "lt1", "1-3": "1-3", "3-5": "3-5", "5+": "5+"}
 BOT_EXP = {v: k for k, v in WEB_EXP.items()}
 WEB_TYPE_BOT = {v: k for k, v in JOB_TYPE_WEB.items()}

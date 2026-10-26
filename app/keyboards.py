@@ -11,7 +11,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
 from .callbacks import Flt, LangCb, MenuCb, Pick, RoleCb, SubCb
-from .constants import CATEGORIES, CITIES, EDU_LEVELS, EXP_LEVELS, JOB_TYPES, LANGUAGES
+from .constants import CATEGORIES, CITIES, EDU_LEVELS, EXP_LEVELS, JOB_TYPES, LANGUAGES, city_label
 from .texts import t
 
 
@@ -124,7 +124,7 @@ def categories_kb(lang: str, field: str = "cat", skip: bool = False) -> InlineKe
 
 
 def cities_kb(lang: str, field: str = "city", skip: bool = False) -> InlineKeyboardMarkup:
-    return _grid([(c, c) for c in CITIES], field, 3, [_skip_btn(field, lang)] if skip else None)
+    return _grid([(c, city_label(c)) for c in CITIES], field, 2, [_skip_btn(field, lang)] if skip else None)
 
 
 def job_type_kb(lang: str, field: str = "jt") -> InlineKeyboardMarkup:
@@ -184,8 +184,8 @@ def filter_values_kb(kind: str, by: str, lang: str) -> InlineKeyboardMarkup:
         b.adjust(2)
     else:
         for c in CITIES:
-            b.button(text=c, callback_data=Flt(kind=kind, by="city", v=c).pack())
-        b.adjust(3)
+            b.button(text=city_label(c), callback_data=Flt(kind=kind, by="city", v=c).pack())
+        b.adjust(2)
     b.row(InlineKeyboardButton(text=t("back", lang), callback_data=Flt(kind=kind, by="menu").pack()))
     return b.as_markup()
 
